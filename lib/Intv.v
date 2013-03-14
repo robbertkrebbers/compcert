@@ -26,16 +26,11 @@ Definition interv : Type := (Z * Z)%type.
 
 Definition In (x: Z) (i: interv) : Prop := fst i <= x < snd i.
 
-Lemma In_dec:
-  forall x i, {In x i} + {~In x i}.
-Proof.
-  unfold In; intros.
-  case (zle (fst i) x); intros. 
-  case (zlt x (snd i)); intros.
-  left; auto.
-  right; intuition. 
-  right; intuition.
-Qed.
+Program Definition In_dec x i : {In x i} + {~In x i} :=
+  if zle (fst i) x then
+    if zlt x (snd i) then left _ else right _
+  else right _.
+Solve Obligations using (unfold In; intuition).
 
 Lemma notin_range: 
   forall x i,
@@ -55,14 +50,9 @@ Qed.
 
 Definition empty (i: interv) : Prop := fst i >= snd i.
 
-Lemma empty_dec:
-  forall i, {empty i} + {~empty i}.
-Proof.
-  unfold empty; intros. 
-  case (zle (snd i) (fst i)); intros.
-  left; omega.
-  right; omega.
-Qed.
+Program Definition empty_dec i : {empty i} + {~empty i} :=
+  if zle (snd i) (fst i) then left _ else right _.
+Solve Obligations using (unfold empty; intros; omega).
 
 Lemma is_notempty:
   forall i, fst i < snd i -> ~empty i.
@@ -144,16 +134,37 @@ Proof.
   intros. exploit range_disjoint; eauto. unfold empty; intuition omega.
 Qed.
 
-Lemma disjoint_dec:
-  forall i j, {disjoint i j} + {~disjoint i j}.
+Lemma range_disjoint_iff:
+  forall i j,
+  disjoint i j <->
+  empty i \/ empty j \/ snd i <= fst j \/ snd j <= fst i.
 Proof.
-  intros. 
-  destruct (empty_dec i). left; apply empty_disjoint_l; auto.
-  destruct (empty_dec j). left; apply empty_disjoint_r; auto.
-  destruct (zle (snd i) (fst j)). left; apply disjoint_range; auto.
-  destruct (zle (snd j) (fst i)). left; apply disjoint_range; auto.
-  right; red; intro. exploit range_disjoint; eauto. intuition. 
+  intuition auto using empty_disjoint_r, empty_disjoint_l,
+    disjoint_range, range_disjoint.
 Qed.
+
+Lemma not_disjoint:
+  forall i j,
+  ~disjoint i j <-> exists z, In z i /\ In z j.
+Proof.
+  split.
+  * rewrite range_disjoint_iff. unfold empty, disjoint, In.
+    destruct (zle (fst i) (fst j)).
+    + exists (fst j); omega.
+    + exists (fst i); omega.
+  * intros (z & ? & ?) H. specialize (H z). tauto.
+Qed.
+
+Program Definition disjoint_dec i j : {disjoint i j} + {~disjoint i j} :=
+  if empty_dec i then left _
+  else if empty_dec j then left _
+  else if zle (snd i) (fst j) then left _
+  else if zle (snd j) (fst i) then left _ else right _.
+Next Obligation. apply empty_disjoint_l; auto. Qed.
+Next Obligation. apply empty_disjoint_r; auto. Qed.
+Next Obligation. apply disjoint_range; auto. Qed.
+Next Obligation. apply disjoint_range; auto. Qed.
+Next Obligation. intro. exploit range_disjoint; intuition eauto. Qed.
 
 (** * Shifting an interval by some amount *)
 
@@ -301,6 +312,46 @@ Proof.
   intros. unfold fold, elements. apply fold_rec_elements. 
 Qed.
 
+(** * Sets of intervals *)
+
+Definition set := list interv.
+
+Definition set_disjoint1 (j : interv) (is : set) : Prop :=
+  forall i, List.In i is -> disjoint j i.
+Definition set_disjoint (is js : set) : Prop :=
+  forall i j, List.In i is -> List.In j js -> disjoint i j.
+
+Lemma set_disjoint1_nil i :
+  set_disjoint1 i nil.
+Proof. now intros (?&?). Qed.
+Lemma set_disjoint1_cons i is j :
+  disjoint j i ->
+  set_disjoint1 j is ->
+  set_disjoint1 j (i :: is).
+Proof. intros ?? j' [?|?]; subst; auto. Qed.
+Lemma set_disjoint1_cons_inv1 i is j :
+  set_disjoint1 j (i :: is) ->
+  disjoint j i.
+Proof. intros H. specialize (H i). simpl in H. intuition congruence. Qed.
+Lemma set_disjoint1_cons_inv2 i is j :
+  set_disjoint1 j (i :: is) ->
+  set_disjoint1 j is.
+Proof. intros H j' ?. specialize (H j'). simpl in H. intuition congruence. Qed.
+
+Program Fixpoint set_disjoint1_dec is j :
+    { set_disjoint1 j is } + { ~set_disjoint1 j is } :=
+  match is with
+  | nil => left _
+  | i :: is =>
+     if disjoint_dec j i then
+       if set_disjoint1_dec is j then left _ else right _
+     else right _
+  end.
+Next Obligation. apply set_disjoint1_nil. Qed.
+Next Obligation. now apply set_disjoint1_cons. Qed.
+Next Obligation. intuition eauto using set_disjoint1_cons_inv2. Qed.
+Next Obligation. intuition eauto using set_disjoint1_cons_inv1. Qed.
+
 (** Hints *)
 
 Hint Resolve
@@ -310,7 +361,3 @@ Hint Resolve
   disjoint_range
   in_shift in_shift_inv
   in_elements elements_in : intv.
-
-
-
-    
