@@ -573,7 +573,7 @@ let rec convertExpr env e =
       let e2' = convertExpr env e2 in
       Eassignop(op', e1', e2', tyres, ty)
   | C.EBinop(C.Ocomma, e1, e2, _) ->
-      Ecomma(convertExpr env e1, convertExpr env e2, ty)
+      Ecomma(true,convertExpr env e1, convertExpr env e2, ty)
   | C.EBinop(C.Ologand, e1, e2, _) ->
       Eseqand(convertExpr env e1, convertExpr env e2, ty)
   | C.EBinop(C.Ologor, e1, e2, _) ->

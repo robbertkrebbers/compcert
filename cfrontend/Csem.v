@@ -46,6 +46,24 @@ Definition env := PTree.t (block * type). (* map variable -> location & type *)
 
 Definition empty_env: env := (PTree.empty (block * type)).
 
+(** We keep track of a set of locations that we have written to during
+  expression execution.  If two unsequenced writes to the same location, or
+  an unsequenced write followed by a read to the same location occur, we
+  assign undefined behavior.  Sequence points are captured by emptying this
+  set. *)
+
+Definition seqs := ZMap.t Intv.set.
+Definition empty_seqs := (ZMap.init (@nil Intv.interv)).
+
+Definition is_not_seq (sq: seqs) (b: block) (ofs: Z) (n: Z) :=
+  Intv.set_disjoint1 (ofs, ofs + n) (PMap.get b sq).
+Definition add_seq (sq: seqs) (b: block) (ofs: Z) (n: Z) : seqs :=
+  PMap.set b ((ofs, ofs + n) :: PMap.get b sq) sq.
+
+Lemma is_not_seq_dec sq b ofs n :
+  { is_not_seq sq b ofs n } + { ~is_not_seq sq b ofs n }.
+Proof. apply Intv.set_disjoint1_dec. Defined.
+
 (** [deref_loc ty m b ofs t v] computes the value of a datum
   of type [ty] residing in memory [m] at block [b], offset [ofs].
   If the type [ty] indicates an access by value, the corresponding
@@ -54,22 +72,26 @@ Definition empty_env: env := (PTree.empty (block * type)).
   returned, and [t] the trace of observables (nonempty if this is
   a volatile access). *)
 
-Inductive deref_loc {F V: Type} (ge: Genv.t F V) (ty: type) (m: mem) (b: block) (ofs: int) : trace -> val -> Prop :=
+Inductive deref_loc {F V: Type} (ge: Genv.t F V) (ty: type) (m: mem) (sq : seqs)
+      (b: block) (ofs: int) : trace -> val -> Prop :=
   | deref_loc_value: forall chunk v,
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
       Mem.loadv chunk m (Vptr b ofs) = Some v ->
-      deref_loc ge ty m b ofs E0 v
+      is_not_seq sq b (Int.unsigned ofs) (size_chunk chunk) ->
+      deref_loc ge ty m sq b ofs E0 v
   | deref_loc_volatile: forall chunk t v,
-      access_mode ty = By_value chunk -> type_is_volatile ty = true ->
+      access_mode ty = By_value chunk ->
+      type_is_volatile ty = true ->
       volatile_load ge chunk m b ofs t v ->
-      deref_loc ge ty m b ofs t v
+      is_not_seq sq b (Int.unsigned ofs) (size_chunk chunk) ->
+      deref_loc ge ty m sq b ofs t v
   | deref_loc_reference:
       access_mode ty = By_reference ->
-      deref_loc ge ty m b ofs E0 (Vptr b ofs)
+      deref_loc ge ty m sq b ofs E0 (Vptr b ofs)
   | deref_loc_copy:
       access_mode ty = By_copy ->
-      deref_loc ge ty m b ofs E0 (Vptr b ofs).
+      deref_loc ge ty m sq b ofs E0 (Vptr b ofs).
 
 (** Symmetrically, [assign_loc ty m b ofs v t m'] returns the
   memory state after storing the value [v] in the datum
@@ -78,17 +100,21 @@ Inductive deref_loc {F V: Type} (ge: Genv.t F V) (ty: type) (m: mem) (b: block) 
   [m'] is the updated memory state and [t] the trace of observables
   (nonempty if this is a volatile store). *)
 
-Inductive assign_loc {F V: Type} (ge: Genv.t F V) (ty: type) (m: mem) (b: block) (ofs: int):
-                                            val -> trace -> mem -> Prop :=
+Inductive assign_loc {F V: Type} (ge: Genv.t F V) (ty: type) (m: mem) (sq : seqs)
+      (b: block) (ofs: int) : val -> trace -> mem -> seqs -> Prop :=
   | assign_loc_value: forall v chunk m',
       access_mode ty = By_value chunk ->
       type_is_volatile ty = false ->
       Mem.storev chunk m (Vptr b ofs) v = Some m' ->
-      assign_loc ge ty m b ofs v E0 m'
+      is_not_seq sq b (Int.unsigned ofs) (size_chunk chunk) ->
+      assign_loc ge ty m sq b ofs v E0 m'
+        (add_seq sq b (Int.unsigned ofs) (size_chunk chunk))
   | assign_loc_volatile: forall v chunk t m',
       access_mode ty = By_value chunk -> type_is_volatile ty = true ->
       volatile_store ge chunk m b ofs v t m' ->
-      assign_loc ge ty m b ofs v t m'
+      is_not_seq sq b (Int.unsigned ofs) (size_chunk chunk) ->
+      assign_loc ge ty m sq b ofs v t m'
+        (add_seq sq b (Int.unsigned ofs) (size_chunk chunk))
   | assign_loc_copy: forall b' ofs' bytes m',
       access_mode ty = By_copy ->
       (alignof_blockcopy ty | Int.unsigned ofs') ->
@@ -98,7 +124,9 @@ Inductive assign_loc {F V: Type} (ge: Genv.t F V) (ty: type) (m: mem) (b: block)
               \/ Int.unsigned ofs + sizeof ty <= Int.unsigned ofs' ->
       Mem.loadbytes m b' (Int.unsigned ofs') (sizeof ty) = Some bytes ->
       Mem.storebytes m b (Int.unsigned ofs) bytes = Some m' ->
-      assign_loc ge ty m b ofs (Vptr b' ofs') E0 m'.
+      is_not_seq sq b (Int.unsigned ofs) (list_length_z bytes) ->
+      assign_loc ge ty m sq b ofs (Vptr b' ofs') E0 m'
+        (add_seq sq b (Int.unsigned ofs) (list_length_z bytes)).
 
 (** Allocation of function-local variables.
   [alloc_variables e1 m1 vars e2 m2] allocates one memory block
@@ -131,9 +159,9 @@ Inductive bind_parameters {F V: Type} (ge: Genv.t F V) (e: env):
       forall m,
       bind_parameters ge e m nil nil m
   | bind_parameters_cons:
-      forall m id ty params v1 vl b m1 m2,
+      forall m id ty params v1 vl b m1 m2 sq,
       PTree.get id e = Some(b, ty) ->
-      assign_loc ge ty m b Int.zero v1 E0 m1 ->
+      assign_loc ge ty m empty_seqs b Int.zero v1 E0 m1 sq ->
       bind_parameters ge e m1 params vl m2 ->
       bind_parameters ge e m ((id, ty) :: params) (v1 :: vl) m2.
 
@@ -225,84 +253,83 @@ Inductive lred: expr -> mem -> expr -> mem -> Prop :=
 
 (** Head reductions for r-values *)
 
-Inductive rred: expr -> mem -> trace -> expr -> mem -> Prop :=
-  | red_rvalof: forall b ofs ty m t v,
-      deref_loc ge ty m b ofs t v ->
-      rred (Evalof (Eloc b ofs ty) ty) m
-         t (Eval v ty) m
-  | red_addrof: forall b ofs ty1 ty m,
-      rred (Eaddrof (Eloc b ofs ty1) ty) m
-        E0 (Eval (Vptr b ofs) ty) m
-  | red_unop: forall op v1 ty1 ty m v,
+Inductive rred: expr -> mem -> seqs -> trace -> expr -> mem -> seqs -> Prop :=
+  | red_rvalof: forall b ofs ty m sq t v,
+      deref_loc ge ty m sq b ofs t v ->
+      rred (Evalof (Eloc b ofs ty) ty) m sq
+         t (Eval v ty) m sq
+  | red_addrof: forall b ofs ty1 ty m sq,
+      rred (Eaddrof (Eloc b ofs ty1) ty) m sq
+        E0 (Eval (Vptr b ofs) ty) m sq
+  | red_unop: forall op v1 ty1 ty m sq v,
       sem_unary_operation op v1 ty1 = Some v ->
-      rred (Eunop op (Eval v1 ty1) ty) m
-        E0 (Eval v ty) m
-  | red_binop: forall op v1 ty1 v2 ty2 ty m v,
+      rred (Eunop op (Eval v1 ty1) ty) m sq
+        E0 (Eval v ty) m sq
+  | red_binop: forall op v1 ty1 v2 ty2 ty m sq v,
       sem_binary_operation op v1 ty1 v2 ty2 m = Some v ->
-      rred (Ebinop op (Eval v1 ty1) (Eval v2 ty2) ty) m
-        E0 (Eval v ty) m
-  | red_cast: forall ty v1 ty1 m v,
+      rred (Ebinop op (Eval v1 ty1) (Eval v2 ty2) ty) m sq
+        E0 (Eval v ty) m sq
+  | red_cast: forall ty v1 ty1 m sq v,
       sem_cast v1 ty1 ty = Some v ->
-      rred (Ecast (Eval v1 ty1) ty) m
-        E0 (Eval v ty) m
-  | red_seqand_true: forall v1 ty1 r2 ty m,
+      rred (Ecast (Eval v1 ty1) ty) m sq
+        E0 (Eval v ty) m sq
+  | red_seqand_true: forall v1 ty1 r2 ty m sq,
       bool_val v1 ty1 = Some true ->
-      rred (Eseqand (Eval v1 ty1) r2 ty) m
-        E0 (Eparen (Eparen r2 type_bool) ty) m
-  | red_seqand_false: forall v1 ty1 r2 ty m,
+      rred (Eseqand (Eval v1 ty1) r2 ty) m sq
+        E0 (Eparen (Eparen r2 type_bool) ty) m empty_seqs
+  | red_seqand_false: forall v1 ty1 r2 ty m sq,
       bool_val v1 ty1 = Some false ->
-      rred (Eseqand (Eval v1 ty1) r2 ty) m
-        E0 (Eval (Vint Int.zero) ty) m
-  | red_seqor_true: forall v1 ty1 r2 ty m,
+      rred (Eseqand (Eval v1 ty1) r2 ty) m sq
+        E0 (Eval (Vint Int.zero) ty) m sq
+  | red_seqor_true: forall v1 ty1 r2 ty m sq,
       bool_val v1 ty1 = Some true ->
-      rred (Eseqor (Eval v1 ty1) r2 ty) m
-        E0 (Eval (Vint Int.one) ty) m
-  | red_seqor_false: forall v1 ty1 r2 ty m,
+      rred (Eseqor (Eval v1 ty1) r2 ty) m sq
+        E0 (Eval (Vint Int.one) ty) m sq
+  | red_seqor_false: forall v1 ty1 r2 ty m sq,
       bool_val v1 ty1 = Some false ->
-      rred (Eseqor (Eval v1 ty1) r2 ty) m
-        E0 (Eparen (Eparen r2 type_bool) ty) m
-  | red_condition: forall v1 ty1 r1 r2 ty b m,
+      rred (Eseqor (Eval v1 ty1) r2 ty) m sq
+        E0 (Eparen (Eparen r2 type_bool) ty) m empty_seqs
+  | red_condition: forall v1 ty1 r1 r2 ty b m sq,
       bool_val v1 ty1 = Some b ->
-      rred (Econdition (Eval v1 ty1) r1 r2 ty) m
-        E0 (Eparen (if b then r1 else r2) ty) m
-  | red_sizeof: forall ty1 ty m,
-      rred (Esizeof ty1 ty) m
-        E0 (Eval (Vint (Int.repr (sizeof ty1))) ty) m
-  | red_alignof: forall ty1 ty m,
-      rred (Ealignof ty1 ty) m
-        E0 (Eval (Vint (Int.repr (alignof ty1))) ty) m
-  | red_assign: forall b ofs ty1 v2 ty2 m v t m',
+      rred (Econdition (Eval v1 ty1) r1 r2 ty) m sq
+        E0 (Eparen (if b then r1 else r2) ty) m empty_seqs
+  | red_sizeof: forall ty1 ty m sq,
+      rred (Esizeof ty1 ty) m sq
+        E0 (Eval (Vint (Int.repr (sizeof ty1))) ty) m sq
+  | red_alignof: forall ty1 ty m sq,
+      rred (Ealignof ty1 ty) m sq
+        E0 (Eval (Vint (Int.repr (alignof ty1))) ty) m sq
+  | red_assign: forall b ofs ty1 v2 ty2 m sq v t m' sq',
       sem_cast v2 ty2 ty1 = Some v ->
-      assign_loc ge ty1 m b ofs v t m' ->
-      rred (Eassign (Eloc b ofs ty1) (Eval v2 ty2) ty1) m
-         t (Eval v ty1) m'
-  | red_assignop: forall op b ofs ty1 v2 ty2 tyres m t v1,
-      deref_loc ge ty1 m b ofs t v1 ->
-      rred (Eassignop op (Eloc b ofs ty1) (Eval v2 ty2) tyres ty1) m
+      assign_loc ge ty1 m sq b ofs v t m' sq' ->
+      rred (Eassign (Eloc b ofs ty1) (Eval v2 ty2) ty1) m sq
+         t (Eval v ty1) m' sq'
+  | red_assignop: forall op b ofs ty1 v2 ty2 tyres m sq t v1,
+      deref_loc ge ty1 m sq b ofs t v1 ->
+      rred (Eassignop op (Eloc b ofs ty1) (Eval v2 ty2) tyres ty1) m sq
          t (Eassign (Eloc b ofs ty1)
-                    (Ebinop op (Eval v1 ty1) (Eval v2 ty2) tyres) ty1) m
-  | red_postincr: forall id b ofs ty m t v1 op,
-      deref_loc ge ty m b ofs t v1 ->
+                    (Ebinop op (Eval v1 ty1) (Eval v2 ty2) tyres) ty1) m sq
+  | red_postincr: forall id b ofs ty m sq t v1 op,
+      deref_loc ge ty m sq b ofs t v1 ->
       op = match id with Incr => Oadd | Decr => Osub end ->
-      rred (Epostincr id (Eloc b ofs ty) ty) m
-         t (Ecomma (Eassign (Eloc b ofs ty) 
+      rred (Epostincr id (Eloc b ofs ty) ty) m sq
+         t (Ecomma false (Eassign (Eloc b ofs ty) 
                            (Ebinop op (Eval v1 ty) (Eval (Vint Int.one) type_int32s) (typeconv ty))
                            ty)
-                   (Eval v1 ty) ty) m
-  | red_comma: forall v ty1 r2 ty m,
+                   (Eval v1 ty) ty) m sq
+  | red_comma: forall sp v ty1 r2 ty m sq,
       typeof r2 = ty ->
-      rred (Ecomma (Eval v ty1) r2 ty) m
-        E0 r2 m
-  | red_paren: forall v1 ty1 ty m v,
+      rred (Ecomma sp (Eval v ty1) r2 ty) m sq
+        E0 r2 m (if sp then empty_seqs else sq)
+  | red_paren: forall v1 ty1 ty m sq v,
       sem_cast v1 ty1 ty = Some v ->
-      rred (Eparen (Eval v1 ty1) ty) m
-        E0 (Eval v ty) m
-  | red_builtin: forall ef tyargs el ty m vargs t vres m',
+      rred (Eparen (Eval v1 ty1) ty) m sq
+        E0 (Eval v ty) m sq
+  | red_builtin: forall ef tyargs el ty m sq vargs t vres m',
       cast_arguments el tyargs vargs ->
       external_call ef ge vargs m t vres m' ->
-      rred (Ebuiltin ef tyargs el ty) m
-         t (Eval vres ty) m'.
-
+      rred (Ebuiltin ef tyargs el ty) m sq
+         t (Eval vres ty) m' empty_seqs.
 
 (** Head reduction for function calls.
     (More exactly, identification of function calls that can reduce.) *)
@@ -375,8 +402,8 @@ Inductive context: kind -> kind -> (expr -> expr) -> Prop :=
       contextlist k C -> context k RV (fun x => Ecall e1 (C x) ty)
   | ctx_builtin: forall k C ef tyargs ty,
       contextlist k C -> context k RV (fun x => Ebuiltin ef tyargs (C x) ty)
-  | ctx_comma: forall k C e2 ty,
-      context k RV C -> context k RV (fun x => Ecomma (C x) e2 ty)
+  | ctx_comma: forall k C sp e2 ty,
+      context k RV C -> context k RV (fun x => Ecomma sp (C x) e2 ty)
   | ctx_paren: forall k C ty,
       context k RV C -> context k RV (fun x => Eparen (C x) ty)
 
@@ -406,23 +433,23 @@ with contextlist: kind -> (expr -> exprlist) -> Prop :=
   is not immediately stuck if it is a value (of the appropriate kind)
   or it can reduce (at head or within). *)
 
-Inductive imm_safe: kind -> expr -> mem -> Prop :=
-  | imm_safe_val: forall v ty m,
-      imm_safe RV (Eval v ty) m
-  | imm_safe_loc: forall b ofs ty m,
-      imm_safe LV (Eloc b ofs ty) m
-  | imm_safe_lred: forall to C e m e' m',
+Inductive imm_safe: kind -> expr -> mem -> seqs -> Prop :=
+  | imm_safe_val: forall v ty m sq,
+      imm_safe RV (Eval v ty) m sq
+  | imm_safe_loc: forall b ofs ty m sq,
+      imm_safe LV (Eloc b ofs ty) m sq
+  | imm_safe_lred: forall to C e m sq e' m',
       lred e m e' m' ->
       context LV to C ->
-      imm_safe to (C e) m
-  | imm_safe_rred: forall to C e m t e' m',
-      rred e m t e' m' ->
+      imm_safe to (C e) m sq
+  | imm_safe_rred: forall to C e m sq t e' m' sq',
+      rred e m sq t e' m' sq' ->
       context RV to C ->
-      imm_safe to (C e) m
-  | imm_safe_callred: forall to C e m fd args ty,
+      imm_safe to (C e) m sq
+  | imm_safe_callred: forall to C e m sq fd args ty,
       callred e fd args ty ->
       context RV to C ->
-      imm_safe to (C e) m.
+      imm_safe to (C e) m sq.
 
 (* An expression is not stuck if none of the potential redexes contained within
    is immediately stuck. *)
@@ -507,7 +534,8 @@ Inductive state: Type :=
       (r: expr)
       (k: cont)
       (e: env)
-      (m: mem) : state
+      (m: mem)
+      (sq: seqs) : state
   | Callstate                           (**r calling a function *)
       (fd: fundef)
       (args: list val)
@@ -575,36 +603,36 @@ the second group of rules can be reused as is. *)
 
 Inductive estep: state -> trace -> state -> Prop :=
 
-  | step_lred: forall C f a k e m a' m',
+  | step_lred: forall C f a k e m sq a' m',
       lred e a m a' m' ->
       context LV RV C ->
-      estep (ExprState f (C a) k e m)
-         E0 (ExprState f (C a') k e m')
+      estep (ExprState f (C a) k e m sq)
+         E0 (ExprState f (C a') k e m' sq)
 
-  | step_rred: forall C f a k e m t a' m',
-      rred a m t a' m' ->
+  | step_rred: forall C f a k e m sq t a' m' sq',
+      rred a m sq t a' m' sq' ->
       context RV RV C ->
-      estep (ExprState f (C a) k e m)
-          t (ExprState f (C a') k e m')
+      estep (ExprState f (C a) k e m sq)
+          t (ExprState f (C a') k e m' sq')
 
-  | step_call: forall C f a k e m fd vargs ty,
+  | step_call: forall C f a k e m sq fd vargs ty,
       callred a fd vargs ty ->
       context RV RV C ->
-      estep (ExprState f (C a) k e m)
+      estep (ExprState f (C a) k e m sq)
          E0 (Callstate fd vargs (Kcall f e C ty k) m)
 
-  | step_stuck: forall C f a k e m K,
-      context K RV C -> ~(imm_safe e K a m) ->
-      estep (ExprState f (C a) k e m)
+  | step_stuck: forall C f a k e m sq K,
+      context K RV C -> ~(imm_safe e K a m sq) ->
+      estep (ExprState f (C a) k e m sq)
          E0 Stuckstate.
 
 Inductive sstep: state -> trace -> state -> Prop :=
 
   | step_do_1: forall f x k e m,
       sstep (State f (Sdo x) k e m)
-         E0 (ExprState f x (Kdo k) e m)
-  | step_do_2: forall f v ty k e m,
-      sstep (ExprState f (Eval v ty) (Kdo k) e m)
+         E0 (ExprState f x (Kdo k) e m empty_seqs)
+  | step_do_2: forall f v ty k e m sq,
+      sstep (ExprState f (Eval v ty) (Kdo k) e m sq)
          E0 (State f Sskip k e m)
 
   | step_seq:  forall f s1 s2 k e m,
@@ -622,22 +650,22 @@ Inductive sstep: state -> trace -> state -> Prop :=
 
   | step_ifthenelse_1: forall f a s1 s2 k e m,
       sstep (State f (Sifthenelse a s1 s2) k e m)
-         E0 (ExprState f a (Kifthenelse s1 s2 k) e m)
-  | step_ifthenelse_2:  forall f v ty s1 s2 k e m b,
+         E0 (ExprState f a (Kifthenelse s1 s2 k) e m empty_seqs)
+  | step_ifthenelse_2:  forall f v ty s1 s2 k e m sq b,
       bool_val v ty = Some b ->
-      sstep (ExprState f (Eval v ty) (Kifthenelse s1 s2 k) e m)
+      sstep (ExprState f (Eval v ty) (Kifthenelse s1 s2 k) e m sq)
          E0 (State f (if b then s1 else s2) k e m)
 
   | step_while: forall f x s k e m,
       sstep (State f (Swhile x s) k e m)
-        E0 (ExprState f x (Kwhile1 x s k) e m)
-  | step_while_false: forall f v ty x s k e m,
+        E0 (ExprState f x (Kwhile1 x s k) e m empty_seqs)
+  | step_while_false: forall f v ty x s k e m sq,
       bool_val v ty = Some false ->
-      sstep (ExprState f (Eval v ty) (Kwhile1 x s k) e m)
+      sstep (ExprState f (Eval v ty) (Kwhile1 x s k) e m sq)
         E0 (State f Sskip k e m)
-  | step_while_true: forall f v ty x s k e m ,
+  | step_while_true: forall f v ty x s k e m sq,
       bool_val v ty = Some true ->
-      sstep (ExprState f (Eval v ty) (Kwhile1 x s k) e m)
+      sstep (ExprState f (Eval v ty) (Kwhile1 x s k) e m sq)
         E0 (State f s (Kwhile2 x s k) e m)
   | step_skip_or_continue_while: forall f s0 x s k e m,
       s0 = Sskip \/ s0 = Scontinue ->
@@ -653,14 +681,14 @@ Inductive sstep: state -> trace -> state -> Prop :=
   | step_skip_or_continue_dowhile: forall f s0 x s k e m,
       s0 = Sskip \/ s0 = Scontinue ->
       sstep (State f s0 (Kdowhile1 x s k) e m)
-         E0 (ExprState f x (Kdowhile2 x s k) e m)
-  | step_dowhile_false: forall f v ty x s k e m,
+         E0 (ExprState f x (Kdowhile2 x s k) e m empty_seqs)
+  | step_dowhile_false: forall f v ty x s k e m sq,
       bool_val v ty = Some false ->
-      sstep (ExprState f (Eval v ty) (Kdowhile2 x s k) e m)
+      sstep (ExprState f (Eval v ty) (Kdowhile2 x s k) e m sq)
          E0 (State f Sskip k e m)
-  | step_dowhile_true: forall f v ty x s k e m,
+  | step_dowhile_true: forall f v ty x s k e m sq,
       bool_val v ty = Some true ->
-      sstep (ExprState f (Eval v ty) (Kdowhile2 x s k) e m)
+      sstep (ExprState f (Eval v ty) (Kdowhile2 x s k) e m sq)
          E0 (State f (Sdowhile x s) k e m)
   | step_break_dowhile: forall f a s k e m,
       sstep (State f Sbreak (Kdowhile1 a s k) e m)
@@ -672,14 +700,14 @@ Inductive sstep: state -> trace -> state -> Prop :=
          E0 (State f a1 (Kseq (Sfor Sskip a2 a3 s) k) e m)
   | step_for: forall f a2 a3 s k e m,
       sstep (State f (Sfor Sskip a2 a3 s) k e m)
-         E0 (ExprState f a2 (Kfor2 a2 a3 s k) e m)
-  | step_for_false: forall f v ty a2 a3 s k e m,
+         E0 (ExprState f a2 (Kfor2 a2 a3 s k) e m empty_seqs)
+  | step_for_false: forall f v ty a2 a3 s k e m sq,
       bool_val v ty = Some false ->
-      sstep (ExprState f (Eval v ty) (Kfor2 a2 a3 s k) e m)
+      sstep (ExprState f (Eval v ty) (Kfor2 a2 a3 s k) e m sq)
          E0 (State f Sskip k e m)
-  | step_for_true: forall f v ty a2 a3 s k e m,
+  | step_for_true: forall f v ty a2 a3 s k e m sq,
       bool_val v ty = Some true ->
-      sstep (ExprState f (Eval v ty) (Kfor2 a2 a3 s k) e m)
+      sstep (ExprState f (Eval v ty) (Kfor2 a2 a3 s k) e m sq)
          E0 (State f s (Kfor3 a2 a3 s k) e m)
   | step_skip_or_continue_for3: forall f x a2 a3 s k e m,
       x = Sskip \/ x = Scontinue ->
@@ -698,11 +726,11 @@ Inductive sstep: state -> trace -> state -> Prop :=
          E0 (Returnstate Vundef (call_cont k) m')
   | step_return_1: forall f x k e m,
       sstep (State f (Sreturn (Some x)) k e m)
-         E0 (ExprState f x (Kreturn k) e  m)
-  | step_return_2:  forall f v1 ty k e m v2 m',
+         E0 (ExprState f x (Kreturn k) e m empty_seqs)
+  | step_return_2:  forall f v1 ty k e m v2 m' sq,
       sem_cast v1 ty f.(fn_return) = Some v2 ->
       Mem.free_list m (blocks_of_env e) = Some m' ->
-      sstep (ExprState f (Eval v1 ty) (Kreturn k) e m)
+      sstep (ExprState f (Eval v1 ty) (Kreturn k) e m sq)
          E0 (Returnstate v2 (call_cont k) m')
   | step_skip_call: forall f k e m m',
       is_call_cont k ->
@@ -712,9 +740,9 @@ Inductive sstep: state -> trace -> state -> Prop :=
 
   | step_switch: forall f x sl k e m,
       sstep (State f (Sswitch x sl) k e m)
-         E0 (ExprState f x (Kswitch1 sl k) e m)
-  | step_expr_switch: forall f n ty sl k e m,
-      sstep (ExprState f (Eval (Vint n) ty) (Kswitch1 sl k) e m)
+         E0 (ExprState f x (Kswitch1 sl k) e m empty_seqs)
+  | step_expr_switch: forall f n ty sl k e m sq,
+      sstep (ExprState f (Eval (Vint n) ty) (Kswitch1 sl k) e m sq)
          E0 (State f (seq_of_labeled_statement (select_switch n sl)) (Kswitch2 k) e m)
   | step_skip_break_switch: forall f x k e m,
       x = Sskip \/ x = Sbreak ->
@@ -747,7 +775,7 @@ Inductive sstep: state -> trace -> state -> Prop :=
 
   | step_returnstate: forall v f e C ty k m,
       sstep (Returnstate v (Kcall f e C ty k) m)
-         E0 (ExprState f (C (Eval v ty)) k e m).
+         E0 (ExprState f (C (Eval v ty)) k e m empty_seqs).
 
 Definition step (S: state) (t: trace) (S': state) : Prop :=
   estep S t S' \/ sstep S t S'.
@@ -788,9 +816,11 @@ Lemma semantics_single_events:
 Proof.
   intros; red; intros. destruct H. 
   set (ge := globalenv (semantics p)) in *.
-  assert (DEREF: forall chunk m b ofs t v, deref_loc ge chunk m b ofs t v -> (length t <= 1)%nat).
+  assert (DEREF: forall chunk m sq b ofs t v,
+    deref_loc ge chunk m sq b ofs t v -> (length t <= 1)%nat).
     intros. inv H0; simpl; try omega. inv H3; simpl; try omega.
-  assert (ASSIGN: forall chunk m b ofs t v m', assign_loc ge chunk m b ofs v t m' -> (length t <= 1)%nat).
+  assert (ASSIGN: forall chunk m sq b ofs t v m' sq',
+    assign_loc ge chunk m sq b ofs v t m' sq' -> (length t <= 1)%nat).
     intros. inv H0; simpl; try omega. inv H3; simpl; try omega.
   inv H; simpl; try omega. inv H0; eauto; simpl; try omega.
   eapply external_call_trace_length; eauto.

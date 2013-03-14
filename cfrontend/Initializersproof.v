@@ -60,7 +60,7 @@ Fixpoint simple (a: expr) : Prop :=
   | Eassign _ _ _ => False
   | Eassignop _ _ _ _ _ => False
   | Epostincr _ _ _ => False
-  | Ecomma r1 r2 _ => simple r1 /\ simple r2
+  | Ecomma _ r1 r2 _ => simple r1 /\ simple r2
   | Ecall _ _ _ => False
   | Ebuiltin _ _ _ _ => False
   | Eparen r1 _ => simple r1
@@ -102,10 +102,10 @@ Inductive eval_simple_lvalue: expr -> block -> int -> Prop :=
 with eval_simple_rvalue: expr -> val -> Prop :=
   | esr_val: forall v ty,
       eval_simple_rvalue (Eval v ty) v
-  | esr_rvalof: forall b ofs l ty v,
+  | esr_rvalof: forall sq b ofs l ty v,
       eval_simple_lvalue l b ofs ->
       ty = typeof l ->
-      deref_loc ge ty m b ofs E0 v ->
+      deref_loc ge ty m sq b ofs E0 v ->
       eval_simple_rvalue (Evalof l ty) v
   | esr_addrof: forall b ofs l ty,
       eval_simple_lvalue l b ofs ->
@@ -149,9 +149,9 @@ with eval_simple_rvalue: expr -> val -> Prop :=
       eval_simple_rvalue (if b then r2 else r3) v' ->
       sem_cast v' (typeof (if b then r2 else r3)) ty = Some v ->
       eval_simple_rvalue (Econdition r1 r2 r3 ty) v
-  | esr_comma: forall r1 r2 ty v1 v,
+  | esr_comma: forall sp r1 r2 ty v1 v,
       eval_simple_rvalue r1 v1 -> eval_simple_rvalue r2 v ->
-      eval_simple_rvalue (Ecomma r1 r2 ty) v
+      eval_simple_rvalue (Ecomma sp r1 r2 ty) v
   | esr_paren: forall r ty v v',
       eval_simple_rvalue r v -> sem_cast v (typeof r) ty = Some v' ->
       eval_simple_rvalue (Eparen r ty) v'.
@@ -190,18 +190,20 @@ Proof.
 Qed.
 
 Lemma rred_simple:
-  forall r m t r' m', rred ge r m t r' m' -> simple r -> simple r'.
+  forall r m sq t r' m' sq',
+  rred ge r m sq t r' m' sq' -> simple r -> simple r'.
 Proof.
   induction 1; simpl; intuition. destruct b; auto. 
 Qed.
 
 Lemma rred_compat:
-  forall e r m r' m', rred ge r m E0 r' m' ->
+  forall e r m sq r' m' sq', rred ge r m sq E0 r' m' sq' ->
   simple r ->
   m = m' /\ compat_eval RV e r r' m.
 Proof.
-  intros until m'; intros RED SIMP. inv RED; simpl in SIMP; try contradiction; split; auto; split; auto; intros vx EV.
-  inv EV. econstructor. constructor. auto. auto. 
+  intros until sq'; intros RED SIMP.
+  inv RED; simpl in SIMP; try contradiction; repeat (split; auto); intros vx EV.
+  inv EV. econstructor. constructor. auto. eauto. 
   inv EV. econstructor. constructor.
   inv EV. econstructor; eauto. constructor. 
   inv EV. econstructor; eauto. constructor. constructor.
@@ -229,7 +231,7 @@ Proof.
   inv H0.
     eapply esl_field_struct; eauto. rewrite TY; eauto. 
     eapply esl_field_union; eauto. rewrite TY; eauto.
-  inv H0. econstructor. eauto. auto. auto.
+  inv H0. econstructor. eauto. auto. eauto.
   inv H0. econstructor; eauto. 
   inv H0. econstructor; eauto. congruence.
   inv H0. econstructor; eauto. congruence.
@@ -266,12 +268,12 @@ Proof.
   induction 2; simpl; try tauto. 
 Qed.
 
-Lemma compat_eval_steps_aux f r e m r' m' s2 :
+Lemma compat_eval_steps_aux f r e m sq r' m' sq' s2 :
   simple r ->
-  star step ge s2 nil (ExprState f r' Kstop e m') ->
-  estep ge (ExprState f r Kstop e m) nil s2 ->
-  exists r1,
-    s2 = ExprState f r1 Kstop e m /\
+  star step ge s2 nil (ExprState f r' Kstop e m' sq') ->
+  estep ge (ExprState f r Kstop e m sq) nil s2 ->
+  exists r1 sq1,
+    s2 = ExprState f r1 Kstop e m sq1 /\
     compat_eval RV e r r1 m /\ simple r1.
 Proof.
   intros.
@@ -279,50 +281,50 @@ Proof.
   (* lred *)
   assert (S: simple a) by (eapply simple_context_1; eauto).
   exploit lred_compat; eauto. intros [A B]. subst m'0.
-  econstructor; split. eauto. split.
+  econstructor; econstructor; split. eauto. split.
   eapply compat_eval_context; eauto.
   eapply simple_context_2; eauto. eapply lred_simple; eauto.
   (* rred *)
   assert (S: simple a) by (eapply simple_context_1; eauto).
-  exploit rred_compat; eauto. intros [A B]. subst m'0.
-  econstructor; split. eauto. split.
+  exploit rred_compat; eauto. intros (?&?). subst.
+  econstructor; econstructor; split. eauto. split.
   eapply compat_eval_context; eauto.
   eapply simple_context_2; eauto. eapply rred_simple; eauto.
   (* callred *)
   assert (S: simple a) by (eapply simple_context_1; eauto).
-  inv H8; simpl in S; contradiction.
+  inv H9; simpl in S; contradiction.
   (* stuckred *)
   inv H0. destruct H1; inv H0.
 Qed.
 
 Lemma compat_eval_steps:
-  forall f r e m  r' m',
-  star step ge (ExprState f r Kstop e m) E0 (ExprState f r' Kstop e m') ->
+  forall f r e m sq r' m' sq',
+  star step ge (ExprState f r Kstop e m sq) E0 (ExprState f r' Kstop e m' sq') ->
   simple r -> 
   m' = m /\ compat_eval RV e r r' m.
 Proof.
-  intros. 
-  remember (ExprState f r Kstop e m) as S1.
+  intros.
+  remember (ExprState f r Kstop e m sq) as S1.
   remember E0 as t.
-  remember (ExprState f r' Kstop e m') as S2.
-  revert S1 t S2 H r m r' m' HeqS1 Heqt HeqS2 H0.
+  remember (ExprState f r' Kstop e m' sq') as S2.
+  revert S1 t S2 H r m sq r' m' sq' HeqS1 Heqt HeqS2 H0.
   induction 1; intros; subst.
   (* base case *) 
-  inv HeqS2. split. auto. red; auto.
+  inv HeqS2. repeat (split; auto).
   (* inductive case *)
   destruct (app_eq_nil t1 t2); auto. subst. inv H.
   (* expression step *)
   exploit compat_eval_steps_aux; eauto.
-  intros [r1 [A [B C]]]. subst s2.
-  exploit IHstar; eauto. intros [D E].
-  split. auto. destruct B; destruct E. split. congruence. auto. 
+  intros (r1 &sq1 & A&B&C). subst s2.
+  exploit IHstar; eauto. intros (D&E); subst.
+  destruct B; destruct E. repeat split; auto; congruence.
   (* statement steps *)
   inv H1.
 Qed.
 
 Theorem eval_simple_steps:
-  forall f r e m v ty m',
-  star step ge (ExprState f r Kstop e m) E0 (ExprState f (Eval v ty) Kstop e m') ->
+  forall f r e m sq v ty m' sq',
+  star step ge (ExprState f r Kstop e m sq) E0 (ExprState f (Eval v ty) Kstop e m' sq') ->
   simple r ->
   m' = m /\ ty = typeof r /\ eval_simple_rvalue e m r v.
 Proof.
@@ -466,8 +468,8 @@ Qed.
 (** Soundness of [constval] with respect to the reduction semantics. *)
 
 Theorem constval_steps:
-  forall f r m v v' ty m',
-  star step ge (ExprState f r Kstop empty_env m) E0 (ExprState f (Eval v' ty) Kstop empty_env m') ->
+  forall f r m sq v v' ty m' sq',
+  star step ge (ExprState f r Kstop empty_env m sq) E0 (ExprState f (Eval v' ty) Kstop empty_env m' sq') ->
   constval r = OK v ->
   m' = m /\ ty = typeof r /\ val_inject inj v v'.
 Proof.
@@ -480,9 +482,9 @@ Qed.
 (** Soundness for single initializers. *)
 
 Theorem transl_init_single_steps:
-  forall ty a data f m v1 ty1 m' v chunk b ofs m'',
+  forall ty a data f m sq v1 ty1 m' sq' v chunk b ofs m'',
   transl_init_single ty a = OK data ->
-  star step ge (ExprState f a Kstop empty_env m) E0 (ExprState f (Eval v1 ty1) Kstop empty_env m') ->
+  star step ge (ExprState f a Kstop empty_env m sq) E0 (ExprState f (Eval v1 ty1) Kstop empty_env m' sq') ->
   sem_cast v1 ty1 ty = Some v ->
   access_mode ty = By_value chunk ->
   Mem.store chunk m' b ofs v = Some m'' ->
@@ -654,9 +656,9 @@ Fixpoint fields_of_struct (id: ident) (ty: type) (fl: fieldlist) (pos: Z) : list
   end.
 
 Inductive exec_init: mem -> block -> Z -> type -> initializer -> mem -> Prop :=
-  | exec_init_single: forall m b ofs ty a v1 ty1 chunk m' v m'',
-      star step ge (ExprState dummy_function a Kstop empty_env m) 
-                E0 (ExprState dummy_function (Eval v1 ty1) Kstop empty_env m') ->
+  | exec_init_single: forall m b ofs ty a v1 ty1 chunk m' sq' v m'',
+      star step ge (ExprState dummy_function a Kstop empty_env m empty_seqs) 
+                E0 (ExprState dummy_function (Eval v1 ty1) Kstop empty_env m' sq') ->
       sem_cast v1 ty1 ty = Some v ->
       access_mode ty = By_value chunk ->
       Mem.store chunk m' b ofs v = Some m'' ->

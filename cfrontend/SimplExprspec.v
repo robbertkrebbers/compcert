@@ -268,12 +268,12 @@ Inductive tr_expr: temp_env -> destination -> Csyntax.expr -> list statement -> 
                     make_assign a1 (transl_incrdecr id (Etempvar t ty1) ty1) ::
                     final dst (Etempvar t ty1))
                    (Etempvar t ty1) tmp
-  | tr_comma: forall le dst e1 e2 ty sl1 a1 tmp1 sl2 a2 tmp2 tmp,
+  | tr_comma: forall sp le dst e1 e2 ty sl1 a1 tmp1 sl2 a2 tmp2 tmp,
       tr_expr le For_effects e1 sl1 a1 tmp1 ->
       tr_expr le dst e2 sl2 a2 tmp2 ->
       list_disjoint tmp1 tmp2 ->  
       incl tmp1 tmp -> incl tmp2 tmp ->
-      tr_expr le dst (Csyntax.Ecomma e1 e2 ty) (sl1 ++ sl2) a2 tmp
+      tr_expr le dst (Csyntax.Ecomma sp e1 e2 ty) (sl1 ++ sl2) a2 tmp
   | tr_call_effects: forall le e1 el2 ty sl1 a1 tmp1 sl2 al2 tmp2 any tmp,
       tr_expr le For_val e1 sl1 a1 tmp1 ->
       tr_exprlist le el2 sl2 al2 tmp2 ->

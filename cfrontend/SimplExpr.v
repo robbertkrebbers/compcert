@@ -371,7 +371,7 @@ Fixpoint transl_expr (dst: destination) (a: Csyntax.expr) : mon (list statement 
           ret (sl1 ++ sl2 ++ make_assign a1 (transl_incrdecr id a2 ty1) :: nil,
                dummy_expr)
       end
-  | Csyntax.Ecomma r1 r2 ty =>
+  | Csyntax.Ecomma _ r1 r2 ty =>
       do (sl1, a1) <- transl_expr For_effects r1;
       do (sl2, a2) <- transl_expr dst r2;
       ret (sl1 ++ sl2, a2)

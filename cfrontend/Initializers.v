@@ -109,7 +109,7 @@ Fixpoint constval (a: expr) : res val :=
       | Some false => do_cast v3 (typeof r3) ty
       | None => Error(msg "condition is undefined")
       end
-  | Ecomma r1 r2 ty =>
+  | Ecomma _ r1 r2 ty =>
       do v1 <- constval r1; constval r2
   | Evar x ty =>
       OK(Vptr x Int.zero)

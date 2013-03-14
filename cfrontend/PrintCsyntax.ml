@@ -258,7 +258,7 @@ let rec expr p (prec, e) =
       fprintf p "%a@ || %a" expr (prec1, a1) expr (prec2, a2)
   | Econdition(a1, a2, a3, _) ->
       fprintf p "%a@ ? %a@ : %a" expr (4, a1) expr (4, a2) expr (4, a3)
-  | Ecomma(a1, a2, _) ->
+  | Ecomma(_, a1, a2, _) ->
       fprintf p "%a,@ %a" expr (prec1, a1) expr (prec2, a2)
   | Ecall(a1, al, _) ->
       fprintf p "%a@[<hov 1>(%a)@]" expr (prec', a1) exprlist (true, al)
@@ -534,7 +534,7 @@ let rec collect_expr e =
   | Eassign(l, r, _) -> collect_expr l; collect_expr r
   | Eassignop(_, l, r, _, _) -> collect_expr l; collect_expr r
   | Epostincr(_, l, _) -> collect_expr l
-  | Ecomma(r1, r2, _) -> collect_expr r1; collect_expr r2
+  | Ecomma(_, r1, r2, _) -> collect_expr r1; collect_expr r2
   | Ecall(r1, rl, _) ->  collect_expr r1; collect_exprlist rl
   | Ebuiltin(_, _, rl, _) -> collect_exprlist rl
   | Eparen _ -> assert false

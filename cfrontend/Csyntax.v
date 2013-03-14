@@ -27,9 +27,11 @@ Require Import Cop.
 
 (** Compcert C expressions are almost identical to those of C.
   The only omission is string literals.  Some operators are treated
-  as derived forms: array indexing, pre-increment, pre-decrement, and
-  the [&&] and [||] operators.  All expressions are annotated with
-  their types. *)
+  as derived forms: array indexing pre-increment, and pre-decrement.
+  All expressions are annotated with their types.  We include two versions
+  of the comma operator, one with and one without a sequence point.  This
+  is to allow us to use the one without sequence point for auxilary
+  expressions in the operational semantics. *)
 
 Inductive expr : Type :=
   | Eval (v: val) (ty: type)                                  (**r constant *)
@@ -54,7 +56,9 @@ Inductive expr : Type :=
                                   (**r assignment with arithmetic [l op= r] *)
   | Epostincr (id: incr_or_decr) (l: expr) (ty: type)
                          (**r post-increment [l++] and post-decrement [l--] *)
-  | Ecomma (r1 r2: expr) (ty: type)       (**r sequence expression [r1, r2] *)
+  | Ecomma (sp : bool) (r1 r2: expr) (ty: type)
+                            (**r sequence expression [r1, r2] ([sp] denotes
+                                   if there is a sequence point in between) *)
   | Ecall (r1: expr) (rargs: exprlist) (ty: type)
                                              (**r function call [r1(rargs)] *)
   | Ebuiltin (ef: external_function) (tyargs: typelist) (rargs: exprlist) (ty: type)
@@ -125,7 +129,7 @@ Definition typeof (a: expr) : type :=
   | Eassign _ _ ty => ty
   | Eassignop _ _ _ _ ty => ty
   | Epostincr _ _ ty => ty
-  | Ecomma _ _ ty => ty
+  | Ecomma _ _ _ ty => ty
   | Ecall _ _ ty => ty
   | Ebuiltin _ _ _ ty => ty
   | Eparen _ ty => ty

@@ -44,6 +44,9 @@ Notation "'do' X , Y <- A ; B" := (match A with Some (X, Y) => B | None => None 
 Notation "'do' X , Y , Z <- A ; B" := (match A with Some (X, Y, Z) => B | None => None end)
   (at level 200, X ident, Y ident, Z ident, A at level 100, B at level 200)
   : option_monad_scope.
+Notation "'do' X , Y , Z , U <- A ; B" := (match A with Some (X, Y, Z, U) => B | None => None end)
+  (at level 200, X ident, Y ident, Z ident, U ident, A at level 100, B at level 200)
+  : option_monad_scope.
 
 Notation " 'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200)
@@ -272,12 +275,16 @@ Qed.
 
 (** Accessing locations *)
 
-Definition do_deref_loc (w: world) (ty: type) (m: mem) (b: block) (ofs: int) : option (world * trace * val) :=
+Definition do_deref_loc (w: world) (ty: type) (m: mem) (sq: seqs) (b: block) (ofs: int) : option (world * trace * val) :=
   match access_mode ty with
   | By_value chunk =>
       match type_is_volatile ty with
-      | false => do v <- Mem.loadv chunk m (Vptr b ofs); Some(w, E0, v)
-      | true => do_volatile_load w chunk m b ofs
+      | false =>
+         check (is_not_seq_dec sq b (Int.unsigned ofs) (size_chunk chunk));
+         do v <- Mem.loadv chunk m (Vptr b ofs); Some(w, E0, v)
+      | true =>
+         check (is_not_seq_dec sq b (Int.unsigned ofs) (size_chunk chunk));
+         do_volatile_load w chunk m b ofs
       end
   | By_reference => Some(w, E0, Vptr b ofs)
   | By_copy => Some(w, E0, Vptr b ofs)
@@ -314,20 +321,28 @@ Proof with try (right; intuition omega).
   destruct Y... left; intuition omega. 
 Defined.
 
-Definition do_assign_loc (w: world) (ty: type) (m: mem) (b: block) (ofs: int) (v: val): option (world * trace * mem) :=
+Definition do_assign_loc (w: world) (ty: type) (m: mem) (sq: seqs)
+    (b: block) (ofs: int) (v: val): option (world * trace * mem * seqs) :=
   match access_mode ty with
   | By_value chunk =>
       match type_is_volatile ty with
-      | false => do m' <- Mem.storev chunk m (Vptr b ofs) v; Some(w, E0, m')
-      | true => do_volatile_store w chunk m b ofs v
+      | false =>
+         check (is_not_seq_dec sq b (Int.unsigned ofs) (size_chunk chunk));
+         do m' <- Mem.storev chunk m (Vptr b ofs) v;
+         Some(w, E0, m', add_seq sq b (Int.unsigned ofs) (size_chunk chunk))
+      | true =>
+         check (is_not_seq_dec sq b (Int.unsigned ofs) (size_chunk chunk));
+         do wtm <- do_volatile_store w chunk m b ofs v;
+         Some (wtm, add_seq sq b (Int.unsigned ofs) (size_chunk chunk))
       end
   | By_copy =>
       match v with
       | Vptr b' ofs' =>
           if check_assign_copy ty b ofs b' ofs' then
             do bytes <- Mem.loadbytes m b' (Int.unsigned ofs') (sizeof ty);
+            check (is_not_seq_dec sq b (Int.unsigned ofs) (list_length_z bytes));
             do m' <- Mem.storebytes m b (Int.unsigned ofs) bytes;
-            Some(w, E0, m')
+            Some(w, E0, m', add_seq sq b (Int.unsigned ofs) (list_length_z bytes))
           else None
       | _ => None
       end
@@ -335,9 +350,9 @@ Definition do_assign_loc (w: world) (ty: type) (m: mem) (b: block) (ofs: int) (v
   end.
 
 Lemma do_deref_loc_sound:
-  forall w ty m b ofs w' t v,
-  do_deref_loc w ty m b ofs = Some(w', t, v) ->
-  deref_loc ge ty m b ofs t v /\ possible_trace w t w'.
+  forall w ty m sq b ofs w' t v,
+  do_deref_loc w ty m sq b ofs = Some(w', t, v) ->
+  deref_loc ge ty m sq b ofs t v /\ possible_trace w t w'.
 Proof.
   unfold do_deref_loc; intros until v.
   destruct (access_mode ty) eqn:?; mydestr. 
@@ -348,23 +363,25 @@ Proof.
 Qed.
 
 Lemma do_deref_loc_complete:
-  forall w ty m b ofs w' t v,
-  deref_loc ge ty m b ofs t v -> possible_trace w t w' ->
-  do_deref_loc w ty m b ofs = Some(w', t, v).
+  forall w ty m sq b ofs w' t v,
+  deref_loc ge ty m sq b ofs t v -> possible_trace w t w' ->
+  do_deref_loc w ty m sq b ofs = Some(w', t, v).
 Proof.
   unfold do_deref_loc; intros. inv H.
   inv H0. rewrite H1; rewrite H2; rewrite H3; auto.
-  rewrite H1; rewrite H2. apply do_volatile_load_complete; auto.
+  now destruct (is_not_seq_dec _ _ _ _).
+  rewrite H1; rewrite H2. destruct (is_not_seq_dec _ _ _ _); try contradiction.
+  apply do_volatile_load_complete; auto.
   inv H0. rewrite H1. auto.
   inv H0. rewrite H1. auto.
 Qed.
 
 Lemma do_assign_loc_sound:
-  forall w ty m b ofs v w' t m',
-  do_assign_loc w ty m b ofs v = Some(w', t, m') ->
-  assign_loc ge ty m b ofs v t m' /\ possible_trace w t w'.
+  forall w ty m sq b ofs v w' t m' sq',
+  do_assign_loc w ty m sq b ofs v = Some(w', t, m', sq') ->
+  assign_loc ge ty m sq b ofs v t m' sq' /\ possible_trace w t w'.
 Proof.
-  unfold do_assign_loc; intros until m'.
+  unfold do_assign_loc; intros until sq'.
   destruct (access_mode ty) eqn:?; mydestr. 
   intros. exploit do_volatile_store_sound; eauto. intuition. eapply assign_loc_volatile; eauto. 
   split. eapply assign_loc_value; eauto. constructor.
@@ -373,15 +390,17 @@ Proof.
 Qed.
 
 Lemma do_assign_loc_complete:
-  forall w ty m b ofs v w' t m',
-  assign_loc ge ty m b ofs v t m' -> possible_trace w t w' ->
-  do_assign_loc w ty m b ofs v = Some(w', t, m').
+  forall w ty m sq b ofs v w' t m' sq',
+  assign_loc ge ty m sq b ofs v t m' sq' -> possible_trace w t w' ->
+  do_assign_loc w ty m sq b ofs v = Some(w', t, m', sq').
 Proof.
   unfold do_assign_loc; intros. inv H.
   inv H0. rewrite H1; rewrite H2; rewrite H3; auto.
-  rewrite H1; rewrite H2. apply do_volatile_store_complete; auto.
+  now destruct (is_not_seq_dec _ _ _ _).
+  rewrite H1; rewrite H2. destruct (is_not_seq_dec _ _ _ _); try contradiction.
+  erewrite do_volatile_store_complete; auto.
   rewrite H1. destruct (check_assign_copy ty b ofs b' ofs').
-  inv H0. rewrite H5; rewrite H6; auto.
+  inv H0. rewrite H5; rewrite H6; auto. now destruct (is_not_seq_dec _ _ _ _).
   elim n. red; tauto. 
 Qed.
 
@@ -662,8 +681,8 @@ Qed.
 (** * Reduction of expressions *)
 
 Inductive reduction: Type :=
-  | Lred (l': expr) (m': mem)
-  | Rred (r': expr) (m': mem) (t: trace)
+  | Lred (l': expr) (m': mem) (sq' : seqs)
+  | Rred (r': expr) (m': mem) (sq' : seqs) (t: trace)
   | Callred (fd: fundef) (args: list val) (tyres: type) (m': mem)
   | Stuckred.
 
@@ -715,13 +734,17 @@ Notation "'do' X , Y , Z <- A ; B" := (match A with Some (X, Y, Z) => B | None =
   (at level 200, X ident, Y ident, Z ident, A at level 100, B at level 200)
   : reducts_monad_scope.
 
+Notation "'do' X , Y , Z , U <- A ; B" := (match A with Some (X, Y, Z, U) => B | None => stuck end)
+  (at level 200, X ident, Y ident, Z ident, U ident, A at level 100, B at level 200)
+  : reducts_monad_scope.
+
 Notation " 'check' A ; B" := (if A then B else stuck)
   (at level 200, A at level 100, B at level 200)
   : reducts_monad_scope.
 
 Local Open Scope reducts_monad_scope.
 
-Fixpoint step_expr (k: kind) (a: expr) (m: mem): reducts expr :=
+Fixpoint step_expr (k: kind) (a: expr) (m: mem) (sq: seqs) : reducts expr :=
   match k, a with
   | LV, Eloc b ofs ty =>
       nil
@@ -729,19 +752,19 @@ Fixpoint step_expr (k: kind) (a: expr) (m: mem): reducts expr :=
       match e!x with
       | Some(b, ty') =>
           check type_eq ty ty';
-          topred (Lred (Eloc b Int.zero ty) m)
+          topred (Lred (Eloc b Int.zero ty) m sq)
       | None =>
           do b <- Genv.find_symbol ge x;
-          topred (Lred (Eloc b Int.zero ty) m)
+          topred (Lred (Eloc b Int.zero ty) m sq)
       end
   | LV, Ederef r ty =>
       match is_val r with
       | Some(Vptr b ofs, ty') =>
-          topred (Lred (Eloc b ofs ty) m)
+          topred (Lred (Eloc b ofs ty) m sq)
       | Some _ =>
           stuck
       | None =>
-          incontext (fun x => Ederef x ty) (step_expr RV r m)
+          incontext (fun x => Ederef x ty) (step_expr RV r m sq)
       end
   | LV, Efield r f ty =>
       match is_val r with
@@ -750,16 +773,16 @@ Fixpoint step_expr (k: kind) (a: expr) (m: mem): reducts expr :=
           | Tstruct id fList _ =>
               match field_offset f fList with
               | Error _ => stuck
-              | OK delta => topred (Lred (Eloc b (Int.add ofs (Int.repr delta)) ty) m)
+              | OK delta => topred (Lred (Eloc b (Int.add ofs (Int.repr delta)) ty) m sq)
               end
           | Tunion id fList _ =>
-              topred (Lred (Eloc b ofs ty) m)
+              topred (Lred (Eloc b ofs ty) m sq)
           | _ => stuck
           end
       | Some _ =>
           stuck
       | None =>
-          incontext (fun x => Efield x f ty) (step_expr RV r m)
+          incontext (fun x => Efield x f ty) (step_expr RV r m sq)
       end
   | RV, Eval v ty =>
       nil
@@ -767,124 +790,124 @@ Fixpoint step_expr (k: kind) (a: expr) (m: mem): reducts expr :=
       match is_loc l with
       | Some(b, ofs, ty') =>
           check type_eq ty ty';
-          do w',t,v <- do_deref_loc w ty m b ofs;
-          topred (Rred (Eval v ty) m t)
+          do w',t,v <- do_deref_loc w ty m sq b ofs;
+          topred (Rred (Eval v ty) m sq t)
       | None =>
-          incontext (fun x => Evalof x ty) (step_expr LV l m)
+          incontext (fun x => Evalof x ty) (step_expr LV l m sq)
       end
   | RV, Eaddrof l ty =>
       match is_loc l with
-      | Some(b, ofs, ty') => topred (Rred (Eval (Vptr b ofs) ty) m E0)
-      | None => incontext (fun x => Eaddrof x ty) (step_expr LV l m)
+      | Some(b, ofs, ty') => topred (Rred (Eval (Vptr b ofs) ty) m sq E0)
+      | None => incontext (fun x => Eaddrof x ty) (step_expr LV l m sq)
       end
   | RV, Eunop op r1 ty =>
       match is_val r1 with
       | Some(v1, ty1) =>
           do v <- sem_unary_operation op v1 ty1;
-          topred (Rred (Eval v ty) m E0)
+          topred (Rred (Eval v ty) m sq E0)
       | None =>
-          incontext (fun x => Eunop op x ty) (step_expr RV r1 m)
+          incontext (fun x => Eunop op x ty) (step_expr RV r1 m sq)
       end
   | RV, Ebinop op r1 r2 ty =>
       match is_val r1, is_val r2 with
       | Some(v1, ty1), Some(v2, ty2) =>
           do v <- sem_binary_operation op v1 ty1 v2 ty2 m;
-          topred (Rred (Eval v ty) m E0)
+          topred (Rred (Eval v ty) m sq E0)
       | _, _ =>
-         incontext2 (fun x => Ebinop op x r2 ty) (step_expr RV r1 m)
-                    (fun x => Ebinop op r1 x ty) (step_expr RV r2 m)
+         incontext2 (fun x => Ebinop op x r2 ty) (step_expr RV r1 m sq)
+                    (fun x => Ebinop op r1 x ty) (step_expr RV r2 m sq)
       end
   | RV, Ecast r1 ty =>
       match is_val r1 with
       | Some(v1, ty1) =>
           do v <- sem_cast v1 ty1 ty;
-          topred (Rred (Eval v ty) m E0)
+          topred (Rred (Eval v ty) m sq E0)
       | None =>
-          incontext (fun x => Ecast x ty) (step_expr RV r1 m)
+          incontext (fun x => Ecast x ty) (step_expr RV r1 m sq)
       end
   | RV, Eseqand r1 r2 ty =>
       match is_val r1 with
       | Some(v1, ty1) =>
           do b <- bool_val v1 ty1;
-          if b then topred (Rred (Eparen (Eparen r2 type_bool) ty) m E0)
-               else topred (Rred (Eval (Vint Int.zero) ty) m E0)
+          if b then topred (Rred (Eparen (Eparen r2 type_bool) ty) m empty_seqs E0)
+               else topred (Rred (Eval (Vint Int.zero) ty) m sq E0)
       | None =>
-          incontext (fun x => Eseqand x r2 ty) (step_expr RV r1 m)
+          incontext (fun x => Eseqand x r2 ty) (step_expr RV r1 m sq)
       end
   | RV, Eseqor r1 r2 ty =>
       match is_val r1 with
       | Some(v1, ty1) =>
           do b <- bool_val v1 ty1;
-          if b then topred (Rred (Eval (Vint Int.one) ty) m E0)
-               else topred (Rred (Eparen (Eparen r2 type_bool) ty) m E0)
+          if b then topred (Rred (Eval (Vint Int.one) ty) m sq E0)
+               else topred (Rred (Eparen (Eparen r2 type_bool) ty) m empty_seqs E0)
       | None =>
-          incontext (fun x => Eseqor x r2 ty) (step_expr RV r1 m)
+          incontext (fun x => Eseqor x r2 ty) (step_expr RV r1 m sq)
       end
   | RV, Econdition r1 r2 r3 ty =>
       match is_val r1 with
       | Some(v1, ty1) =>
           do b <- bool_val v1 ty1;
-          topred (Rred (Eparen (if b then r2 else r3) ty) m E0)
+          topred (Rred (Eparen (if b then r2 else r3) ty) m empty_seqs E0)
       | None =>
-          incontext (fun x => Econdition x r2 r3 ty) (step_expr RV r1 m)
+          incontext (fun x => Econdition x r2 r3 ty) (step_expr RV r1 m sq)
       end
   | RV, Esizeof ty' ty =>
-      topred (Rred (Eval (Vint (Int.repr (sizeof ty'))) ty) m E0)
+      topred (Rred (Eval (Vint (Int.repr (sizeof ty'))) ty) m sq E0)
   | RV, Ealignof ty' ty =>
-      topred (Rred (Eval (Vint (Int.repr (alignof ty'))) ty) m E0)
+      topred (Rred (Eval (Vint (Int.repr (alignof ty'))) ty) m sq E0)
   | RV, Eassign l1 r2 ty =>
       match is_loc l1, is_val r2 with
       | Some(b, ofs, ty1), Some(v2, ty2) =>
           check type_eq ty1 ty;
           do v <- sem_cast v2 ty2 ty1;
-          do w',t,m' <- do_assign_loc w ty1 m b ofs v;
-          topred (Rred (Eval v ty) m' t)
+          do w',t,m',sq' <- do_assign_loc w ty1 m sq b ofs v;
+          topred (Rred (Eval v ty) m' sq' t)
       | _, _ =>
-         incontext2 (fun x => Eassign x r2 ty) (step_expr LV l1 m)
-                    (fun x => Eassign l1 x ty) (step_expr RV r2 m)
+         incontext2 (fun x => Eassign x r2 ty) (step_expr LV l1 m sq)
+                    (fun x => Eassign l1 x ty) (step_expr RV r2 m sq)
       end
   | RV, Eassignop op l1 r2 tyres ty =>
       match is_loc l1, is_val r2 with
       | Some(b, ofs, ty1), Some(v2, ty2) =>
           check type_eq ty1 ty;
-          do w',t,v1 <- do_deref_loc w ty1 m b ofs;
+          do w',t,v1 <- do_deref_loc w ty1 m sq b ofs;
           let r' := Eassign (Eloc b ofs ty1)
                            (Ebinop op (Eval v1 ty1) (Eval v2 ty2) tyres) ty1 in
-          topred (Rred r' m t)
+          topred (Rred r' m sq t)
       | _, _ =>
-         incontext2 (fun x => Eassignop op x r2 tyres ty) (step_expr LV l1 m)
-                    (fun x => Eassignop op l1 x tyres ty) (step_expr RV r2 m)
+         incontext2 (fun x => Eassignop op x r2 tyres ty) (step_expr LV l1 m sq)
+                    (fun x => Eassignop op l1 x tyres ty) (step_expr RV r2 m sq)
       end
   | RV, Epostincr id l ty =>
       match is_loc l with
       | Some(b, ofs, ty1) =>
           check type_eq ty1 ty;
-          do w',t, v1 <- do_deref_loc w ty m b ofs;
+          do w',t, v1 <- do_deref_loc w ty m sq b ofs;
           let op := match id with Incr => Oadd | Decr => Osub end in
           let r' :=
-            Ecomma (Eassign (Eloc b ofs ty) 
+            Ecomma false (Eassign (Eloc b ofs ty) 
                            (Ebinop op (Eval v1 ty) (Eval (Vint Int.one) type_int32s) (typeconv ty))
                            ty)
                    (Eval v1 ty) ty in
-          topred (Rred r' m t)
+          topred (Rred r' m sq t)
       | None =>
-          incontext (fun x => Epostincr id x ty) (step_expr LV l m)
+          incontext (fun x => Epostincr id x ty) (step_expr LV l m sq)
       end
-  | RV, Ecomma r1 r2 ty =>
+  | RV, Ecomma sp r1 r2 ty =>
       match is_val r1 with
       | Some _ =>
           check type_eq (typeof r2) ty;
-          topred (Rred r2 m E0)
+          topred (Rred r2 m (if sp then empty_seqs else sq) E0)
       | None =>
-          incontext (fun x => Ecomma x r2 ty) (step_expr RV r1 m)
+          incontext (fun x => Ecomma sp x r2 ty) (step_expr RV r1 m sq)
       end
   | RV, Eparen r1 ty =>
       match is_val r1 with
       | Some (v1, ty1) =>
           do v <- sem_cast v1 ty1 ty;
-          topred (Rred (Eval v ty) m E0)
+          topred (Rred (Eval v ty) m sq E0)
       | None =>
-          incontext (fun x => Eparen x ty) (step_expr RV r1 m)
+          incontext (fun x => Eparen x ty) (step_expr RV r1 m sq)
       end
   | RV, Ecall r1 rargs ty =>
       match is_val r1, is_val_list rargs with
@@ -898,8 +921,8 @@ Fixpoint step_expr (k: kind) (a: expr) (m: mem): reducts expr :=
           | _ => stuck
           end
       | _, _ =>
-          incontext2 (fun x => Ecall x rargs ty) (step_expr RV r1 m)
-                     (fun x => Ecall r1 x ty) (step_exprlist rargs m)
+          incontext2 (fun x => Ecall x rargs ty) (step_expr RV r1 m sq)
+                     (fun x => Ecall r1 x ty) (step_exprlist rargs m sq)
       end
   | RV, Ebuiltin ef tyargs rargs ty =>
       match is_val_list rargs with
@@ -907,45 +930,45 @@ Fixpoint step_expr (k: kind) (a: expr) (m: mem): reducts expr :=
           do vargs <- sem_cast_arguments vtl tyargs;
           match do_external ef w vargs m with
           | None => stuck
-          | Some(w',t,v,m') => topred (Rred (Eval v ty) m' t)
+          | Some(w',t,v,m') => topred (Rred (Eval v ty) m' empty_seqs t)
           end
       | _ =>
-          incontext (fun x => Ebuiltin ef tyargs x ty) (step_exprlist rargs m)
+          incontext (fun x => Ebuiltin ef tyargs x ty) (step_exprlist rargs m sq)
       end
   | _, _ => stuck
   end
 
-with step_exprlist (rl: exprlist) (m: mem): reducts exprlist :=
+with step_exprlist (rl: exprlist) (m: mem) (sq: seqs) : reducts exprlist :=
   match rl with
   | Enil =>
       nil
   | Econs r1 rs =>
-      incontext2 (fun x => Econs x rs) (step_expr RV r1 m)
-                 (fun x => Econs r1 x) (step_exprlist rs m)
+      incontext2 (fun x => Econs x rs) (step_expr RV r1 m sq)
+                 (fun x => Econs r1 x) (step_exprlist rs m sq)
   end.
 
 (** Technical properties on safe expressions. *)
 
-Inductive imm_safe_t: kind -> expr -> mem -> Prop :=
-  | imm_safe_t_val: forall v ty m,
-      imm_safe_t RV (Eval v ty) m
-  | imm_safe_t_loc: forall b ofs ty m,
-      imm_safe_t LV (Eloc b ofs ty) m
-  | imm_safe_t_lred: forall to C l m l' m',
+Inductive imm_safe_t: kind -> expr -> mem -> seqs -> Prop :=
+  | imm_safe_t_val: forall v ty m sq,
+      imm_safe_t RV (Eval v ty) m sq
+  | imm_safe_t_loc: forall b ofs ty m sq,
+      imm_safe_t LV (Eloc b ofs ty) m sq
+  | imm_safe_t_lred: forall to C l m sq l' m',
       lred ge e l m l' m' ->
       context LV to C ->
-      imm_safe_t to (C l) m
-  | imm_safe_t_rred: forall to C r m t r' m' w',
-      rred ge r m t r' m' -> possible_trace w t w' ->
+      imm_safe_t to (C l) m sq
+  | imm_safe_t_rred: forall to C r m sq t r' m' sq' w',
+      rred ge r m sq t r' m' sq' -> possible_trace w t w' ->
       context RV to C ->
-      imm_safe_t to (C r) m
-  | imm_safe_t_callred: forall to C r m fd args ty,
+      imm_safe_t to (C r) m sq
+  | imm_safe_t_callred: forall to C r m sq fd args ty,
       callred ge r fd args ty ->
       context RV to C ->
-      imm_safe_t to (C r) m.
+      imm_safe_t to (C r) m sq.
 
 Remark imm_safe_t_imm_safe:
-  forall k a m, imm_safe_t k a m -> imm_safe ge e k a m.
+  forall k a m sq, imm_safe_t k a m sq -> imm_safe ge e k a m sq.
 Proof.
   induction 1. 
   constructor.
@@ -977,7 +1000,7 @@ Fixpoint exprlist_all_values (rl: exprlist) : Prop :=
   | Econs _ _ => False
   end.
 
-Definition invert_expr_prop (a: expr) (m: mem) : Prop :=
+Definition invert_expr_prop (a: expr) (m: mem) (sq: seqs) : Prop :=
   match a with
   | Eloc b ofs ty => False
   | Evar x ty =>
@@ -995,7 +1018,7 @@ Definition invert_expr_prop (a: expr) (m: mem) : Prop :=
       end
   | Eval v ty => False
   | Evalof (Eloc b ofs ty') ty =>
-      ty' = ty /\ exists t, exists v, exists w', deref_loc ge ty m b ofs t v /\ possible_trace w t w'
+      ty' = ty /\ exists t, exists v, exists w', deref_loc ge ty m sq b ofs t v /\ possible_trace w t w'
   | Eunop op (Eval v1 ty1) ty =>
       exists v, sem_unary_operation op v1 ty1 = Some v
   | Ebinop op (Eval v1 ty1) (Eval v2 ty2) ty =>
@@ -1009,15 +1032,15 @@ Definition invert_expr_prop (a: expr) (m: mem) : Prop :=
   | Econdition (Eval v1 ty1) r1 r2 ty =>
       exists b, bool_val v1 ty1 = Some b
   | Eassign (Eloc b ofs ty1) (Eval v2 ty2) ty =>
-      exists v, exists m', exists t, exists w',
-      ty = ty1 /\ sem_cast v2 ty2 ty1 = Some v /\ assign_loc ge ty1 m b ofs v t m' /\ possible_trace w t w'
+      exists v, exists m', exists t, exists w', exists sq',
+      ty = ty1 /\ sem_cast v2 ty2 ty1 = Some v /\ assign_loc ge ty1 m sq b ofs v t m' sq' /\ possible_trace w t w'
   | Eassignop op (Eloc b ofs ty1) (Eval v2 ty2) tyres ty =>
       exists t, exists v1, exists w',
-      ty = ty1 /\ deref_loc ge ty1 m b ofs t v1 /\ possible_trace w t w'
+      ty = ty1 /\ deref_loc ge ty1 m sq b ofs t v1 /\ possible_trace w t w'
   | Epostincr id (Eloc b ofs ty1) ty =>
       exists t, exists v1, exists w', 
-      ty = ty1 /\ deref_loc ge ty m b ofs t v1 /\ possible_trace w t w'
-  | Ecomma (Eval v ty1) r2 ty =>
+      ty = ty1 /\ deref_loc ge ty m sq b ofs t v1 /\ possible_trace w t w'
+  | Ecomma _ (Eval v ty1) r2 ty =>
       typeof r2 = ty
   | Eparen (Eval v1 ty1) ty =>
       exists v, sem_cast v1 ty1 ty = Some v
@@ -1038,7 +1061,7 @@ Definition invert_expr_prop (a: expr) (m: mem) : Prop :=
   end.
 
 Lemma lred_invert:
-  forall l m l' m', lred ge e l m l' m' -> invert_expr_prop l m.
+  forall l m sq l' m', lred ge e l m l' m' -> invert_expr_prop l m sq.
 Proof.
   induction 1; red; auto.
   exists b; auto.
@@ -1049,7 +1072,8 @@ Proof.
 Qed.
 
 Lemma rred_invert:
-  forall w' r m t r' m', rred ge r m t r' m' -> possible_trace w t w' -> invert_expr_prop r m.
+  forall w' r m sq t r' m' sq',
+  rred ge r m sq t r' m' sq' -> possible_trace w t w' -> invert_expr_prop r m sq.
 Proof.
   induction 1; intros; red; auto.
   split; auto; exists t; exists v; exists w'; auto.
@@ -1059,7 +1083,7 @@ Proof.
   exists true; auto. exists false; auto.
   exists true; auto. exists false; auto.
   exists b; auto.
-  exists v; exists m'; exists t; exists w'; auto.
+  exists v; exists m'; exists t; exists w'; exists sq'; auto.
   exists t; exists v1; exists w'; auto.
   exists t; exists v1; exists w'; auto.
   exists v; auto.
@@ -1067,9 +1091,9 @@ Proof.
 Qed.
 
 Lemma callred_invert:
-  forall r fd args ty m,
+  forall r fd args ty m sq,
   callred ge r fd args ty ->
-  invert_expr_prop r m.
+  invert_expr_prop r m sq.
 Proof.
   intros. inv H. simpl.
   intros. exists tyargs, tyres, cconv, fd, args; auto.
@@ -1081,12 +1105,12 @@ Combined Scheme context_contextlist_ind from context_ind2, contextlist_ind2.
 
 Lemma invert_expr_context:
   (forall from to C, context from to C ->
-   forall a m,
-   invert_expr_prop a m ->
-   invert_expr_prop (C a) m)
+   forall a m sq,
+   invert_expr_prop a m sq ->
+   invert_expr_prop (C a) m sq)
 /\(forall from C, contextlist from C ->
-  forall a m,
-  invert_expr_prop a m ->
+  forall a m sq,
+  invert_expr_prop a m sq ->
   ~exprlist_all_values (C a)).
 Proof.
   apply context_contextlist_ind; intros; try (exploit H0; [eauto|intros]); simpl.
@@ -1108,34 +1132,34 @@ Proof.
   destruct e1; auto; destruct (C a); auto; contradiction.
   destruct (C a); auto; contradiction.
   destruct (C a); auto; contradiction.
-  destruct e1; auto. intros. elim (H0 a m); auto.
-  intros. elim (H0 a m); auto.
+  destruct e1; auto. intros. elim (H0 a m sq); auto.
+  intros. elim (H0 a m sq); auto.
   destruct (C a); auto; contradiction.
   destruct (C a); auto; contradiction.
   red; intros. destruct (C a); auto. 
-  red; intros. destruct e1; auto. elim (H0 a m); auto. 
+  red; intros. destruct e1; auto. elim (H0 a m sq); auto. 
 Qed.
 
 Lemma imm_safe_t_inv:
-  forall k a m,
-  imm_safe_t k a m ->
+  forall k a m sq,
+  imm_safe_t k a m sq ->
   match a with
   | Eloc _ _ _ => True
   | Eval _ _ => True
-  | _ => invert_expr_prop a m
+  | _ => invert_expr_prop a m sq
   end.
 Proof.
   destruct invert_expr_context as [A B].
   intros. inv H. 
   auto.
   auto.
-  assert (invert_expr_prop (C l) m).
+  assert (invert_expr_prop (C l) m sq).
     eapply A; eauto. eapply lred_invert; eauto.
   red in H. destruct (C l); auto; contradiction.
-  assert (invert_expr_prop (C r) m).
+  assert (invert_expr_prop (C r) m sq).
     eapply A; eauto. eapply rred_invert; eauto.
   red in H. destruct (C r); auto; contradiction.
-  assert (invert_expr_prop (C r) m).
+  assert (invert_expr_prop (C r) m sq).
     eapply A; eauto. eapply callred_invert; eauto.
   red in H. destruct (C r); auto; contradiction.
 Qed.
@@ -1160,26 +1184,26 @@ Qed.
 Hint Constructors context contextlist.
 Hint Resolve context_compose contextlist_compose.
 
-Definition reduction_ok (k: kind) (a: expr) (m: mem) (rd: reduction) : Prop :=
+Definition reduction_ok (k: kind) (a: expr) (m: mem) (sq: seqs) (rd: reduction) : Prop :=
   match k, rd with
-  | LV, Lred l' m' => lred ge e a m l' m'
-  | RV, Rred r' m' t => rred ge a m t r' m' /\ exists w', possible_trace w t w'
+  | LV, Lred l' m' sq' => lred ge e a m l' m' /\ sq' = sq
+  | RV, Rred r' m' sq' t => rred ge a m sq t r' m' sq' /\ exists w', possible_trace w t w'
   | RV, Callred fd args tyres m' => callred ge a fd args tyres /\ m' = m
-  | LV, Stuckred => ~imm_safe_t k a m
-  | RV, Stuckred => ~imm_safe_t k a m
+  | LV, Stuckred => ~imm_safe_t k a m sq
+  | RV, Stuckred => ~imm_safe_t k a m sq
   | _, _ => False
   end.
 
-Definition reducts_ok (k: kind) (a: expr) (m: mem) (ll: reducts expr) : Prop :=
+Definition reducts_ok (k: kind) (a: expr) (m: mem) (sq: seqs) (ll: reducts expr) : Prop :=
   (forall C rd,
       In (C, rd) ll ->
-      exists a', exists k', context k' k C /\ a = C a' /\ reduction_ok k' a' m rd)
+      exists a', exists k', context k' k C /\ a = C a' /\ reduction_ok k' a' m sq rd)
   /\ (ll = nil -> match k with LV => is_loc a <> None | RV => is_val a <> None end).
 
-Definition list_reducts_ok (al: exprlist) (m: mem) (ll: reducts exprlist) : Prop :=
+Definition list_reducts_ok (al: exprlist) (m: mem) (sq: seqs) (ll: reducts exprlist) : Prop :=
   (forall C rd,
       In (C, rd) ll ->
-      exists a', exists k', contextlist k' C /\ al = C a' /\ reduction_ok k' a' m rd)
+      exists a', exists k', contextlist k' C /\ al = C a' /\ reduction_ok k' a' m sq rd)
   /\ (ll = nil -> is_val_list al <> None).
 
 Ltac monadInv :=
@@ -1215,9 +1239,9 @@ Proof.
 Qed.
 
 Lemma topred_ok:
-  forall k a m rd,
-  reduction_ok k a m rd ->
-  reducts_ok k a m (topred rd).
+  forall k a m sq rd,
+  reduction_ok k a m sq rd ->
+  reducts_ok k a m sq (topred rd).
 Proof.
   intros. unfold topred; split; simpl; intros. 
   destruct H0; try contradiction. inv H0. exists a; exists k; auto.
@@ -1225,9 +1249,9 @@ Proof.
 Qed.
 
 Lemma stuck_ok:
-  forall k a m,
-  ~imm_safe_t k a m ->
-  reducts_ok k a m stuck.
+  forall k a m sq,
+  ~imm_safe_t k a m sq ->
+  reducts_ok k a m sq stuck.
 Proof.
   intros. unfold stuck; split; simpl; intros.
   destruct H0; try contradiction. inv H0. exists a; exists k; intuition. red. destruct k; auto.
@@ -1235,34 +1259,34 @@ Proof.
 Qed.
 
 Lemma wrong_kind_ok:
-  forall k a m,
+  forall k a m sq,
   k <> Cstrategy.expr_kind a ->
-  reducts_ok k a m stuck.
+  reducts_ok k a m sq stuck.
 Proof.
   intros. apply stuck_ok. red; intros. exploit Cstrategy.imm_safe_kind; eauto. 
   eapply imm_safe_t_imm_safe; eauto.
 Qed.
 
 Lemma not_invert_ok:
-  forall k a m,
+  forall k a m sq,
   match a with
   | Eloc _ _ _ => False
   | Eval _ _ => False
-  | _ => invert_expr_prop a m -> False
+  | _ => invert_expr_prop a m sq -> False
   end ->
-  reducts_ok k a m stuck.
+  reducts_ok k a m sq stuck.
 Proof.
   intros. apply stuck_ok. red; intros. 
   exploit imm_safe_t_inv; eauto. destruct a; auto. 
 Qed. 
 
 Lemma incontext_ok:
-  forall k a m C res k' a',
-  reducts_ok k' a' m res ->
+  forall k a m sq C res k' a',
+  reducts_ok k' a' m sq res ->
   a = C a' ->
   context k' k C ->
   match k' with LV => is_loc a' = None | RV => is_val a' = None end ->
-  reducts_ok k a m (incontext C res).
+  reducts_ok k a m sq (incontext C res).
 Proof.
   unfold reducts_ok, incontext; intros. destruct H. split; intros.
   exploit list_in_map_inv; eauto. intros [[C1 rd1] [P Q]]. inv P.
@@ -1272,14 +1296,14 @@ Proof.
 Qed.
 
 Lemma incontext2_ok:
-  forall k a m k1 a1 res1 k2 a2 res2 C1 C2,
-  reducts_ok k1 a1 m res1 ->
-  reducts_ok k2 a2 m res2 ->
+  forall k a m sq k1 a1 res1 k2 a2 res2 C1 C2,
+  reducts_ok k1 a1 m sq res1 ->
+  reducts_ok k2 a2 m sq res2 ->
   a = C1 a1 -> a = C2 a2 ->
   context k1 k C1 -> context k2 k C2 ->
   match k1 with LV => is_loc a1 = None | RV => is_val a1 = None end
   \/ match k2 with LV => is_loc a2 = None | RV => is_val a2 = None end ->
-  reducts_ok k a m (incontext2 C1 res1 C2 res2).
+  reducts_ok k a m sq (incontext2 C1 res1 C2 res2).
 Proof.
   unfold reducts_ok, incontext2, incontext; intros. destruct H; destruct H0; split; intros.
   destruct (in_app_or _ _ _ H8).
@@ -1294,10 +1318,10 @@ Proof.
 Qed.
 
 Lemma incontext_list_ok:
-  forall ef tyargs al ty m res,
-  list_reducts_ok al m res ->
+  forall ef tyargs al ty m sq res,
+  list_reducts_ok al m sq res ->
   is_val_list al = None ->
-  reducts_ok RV (Ebuiltin ef tyargs al ty) m
+  reducts_ok RV (Ebuiltin ef tyargs al ty) m sq
                 (incontext (fun x => Ebuiltin ef tyargs x ty) res).
 Proof.
   unfold reducts_ok, incontext; intros. destruct H. split; intros.
@@ -1308,11 +1332,11 @@ Proof.
 Qed.
 
 Lemma incontext2_list_ok:
-  forall a1 a2 ty m res1 res2,
-  reducts_ok RV a1 m res1 ->
-  list_reducts_ok a2 m res2 ->
+  forall a1 a2 ty m sq res1 res2,
+  reducts_ok RV a1 m sq res1 ->
+  list_reducts_ok a2 m sq res2 ->
   is_val a1 = None \/ is_val_list a2 = None ->
-  reducts_ok RV (Ecall a1 a2 ty) m 
+  reducts_ok RV (Ecall a1 a2 ty) m sq
                (incontext2 (fun x => Ecall x a2 ty) res1
                            (fun x => Ecall a1 x ty) res2).
 Proof.
@@ -1329,10 +1353,10 @@ Proof.
 Qed.
 
 Lemma incontext2_list_ok':
-  forall a1 a2 m res1 res2,
-  reducts_ok RV a1 m res1 ->
-  list_reducts_ok a2 m res2 ->
-  list_reducts_ok (Econs a1 a2) m
+  forall a1 a2 m sq res1 res2,
+  reducts_ok RV a1 m sq res1 ->
+  list_reducts_ok a2 m sq res2 ->
+  list_reducts_ok (Econs a1 a2) m sq
                (incontext2 (fun x => Econs x a2) res1
                            (fun x => Econs a1 x) res2).
 Proof.
@@ -1367,9 +1391,9 @@ Ltac myinv :=
   end.
 
 Theorem step_expr_sound:
-  forall a k m, reducts_ok k a m (step_expr k a m)
+  forall a k m sq, reducts_ok k a m sq (step_expr k a m sq)
 with step_exprlist_sound:
-  forall al m, list_reducts_ok al m (step_exprlist al m).
+  forall al m sq, list_reducts_ok al m sq (step_exprlist al m sq).
 Proof with (try (apply not_invert_ok; simpl; intro; myinv; intuition congruence; fail)).
   induction a; intros; simpl; destruct k; try (apply wrong_kind_ok; simpl; congruence).
 (* Eval *)
@@ -1377,9 +1401,9 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; intuition congruence;
 (* Evar *)
   destruct (e!x) as [[b ty']|] eqn:?.
   destruct (type_eq ty ty')...
-  subst. apply topred_ok; auto. apply red_var_local; auto.
+  subst. apply topred_ok; auto. split. apply red_var_local; auto. easy.
   destruct (Genv.find_symbol ge x) as [b|] eqn:?...
-  apply topred_ok; auto. apply red_var_global; auto.
+  apply topred_ok; auto. split. apply red_var_global; auto. easy.
 (* Efield *)
   destruct (is_val a) as [[v ty'] | ] eqn:?.
   rewrite (is_val_inv _ _ _ Heqo).
@@ -1387,16 +1411,16 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; intuition congruence;
   destruct ty'... 
   (* top struct *)
   destruct (field_offset f f0) as [delta|] eqn:?...
-  apply topred_ok; auto. apply red_field_struct; auto.
+  apply topred_ok; auto. split. apply red_field_struct; auto. easy.
   (* top union *)
-  apply topred_ok; auto. apply red_field_union; auto.
+  apply topred_ok; auto. split. apply red_field_union; auto. easy.
   (* in depth *)
   eapply incontext_ok; eauto. 
 (* Evalof *)
   destruct (is_loc a) as [[[b ofs] ty'] | ] eqn:?. rewrite (is_loc_inv _ _ _ _ Heqo).
   (* top *)
   destruct (type_eq ty ty')... subst ty'.
-  destruct (do_deref_loc w ty m b ofs) as [[[w' t] v] | ] eqn:?.
+  destruct (do_deref_loc w ty m sq b ofs) as [[[w' t] v] | ] eqn:?.
   exploit do_deref_loc_sound; eauto. intros [A B].
   apply topred_ok; auto. red. split. apply red_rvalof; auto. exists w'; auto.
   apply not_invert_ok; simpl; intros; myinv. exploit do_deref_loc_complete; eauto. congruence.
@@ -1405,7 +1429,7 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; intuition congruence;
 (* Ederef *)
   destruct (is_val a) as [[v ty'] | ] eqn:?. rewrite (is_val_inv _ _ _ Heqo).
   (* top *)
-  destruct v... apply topred_ok; auto. apply red_deref; auto. 
+  destruct v... apply topred_ok; auto. split. apply red_deref; auto. easy. 
   (* depth *)
   eapply incontext_ok; eauto.
 (* Eaddrof *)
@@ -1472,7 +1496,7 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; intuition congruence;
   (* top *)
   destruct (type_eq ty1 ty)... subst ty1.
   destruct (sem_cast v2 ty2 ty) as [v|] eqn:?...
-  destruct (do_assign_loc w ty m b ofs v) as [[[w' t] m']|] eqn:?.
+  destruct (do_assign_loc w ty m sq b ofs v) as [[[[w' t] m'] sq']|] eqn:?.
   exploit do_assign_loc_sound; eauto. intros [P Q].
   apply topred_ok; auto. split. apply red_assign; auto. exists w'; auto.
   apply not_invert_ok; simpl; intros; myinv. exploit do_assign_loc_complete; eauto. congruence.
@@ -1485,7 +1509,7 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; intuition congruence;
   rewrite (is_loc_inv _ _ _ _ Heqo). rewrite (is_val_inv _ _ _ Heqo0). 
   (* top *)
   destruct (type_eq ty1 ty)... subst ty1.
-  destruct (do_deref_loc w ty m b ofs) as [[[w' t] v] | ] eqn:?.
+  destruct (do_deref_loc w ty m sq b ofs) as [[[w' t] v] | ] eqn:?.
   exploit do_deref_loc_sound; eauto. intros [A B].
   apply topred_ok; auto. red. split. apply red_assignop; auto. exists w'; auto.
   apply not_invert_ok; simpl; intros; myinv. exploit do_deref_loc_complete; eauto. congruence.
@@ -1496,7 +1520,7 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; intuition congruence;
   destruct (is_loc a) as [[[b ofs] ty'] | ] eqn:?. rewrite (is_loc_inv _ _ _ _ Heqo). 
   (* top *)
   destruct (type_eq ty' ty)... subst ty'.
-  destruct (do_deref_loc w ty m b ofs) as [[[w' t] v] | ] eqn:?.
+  destruct (do_deref_loc w ty m sq b ofs) as [[[w' t] v] | ] eqn:?.
   exploit do_deref_loc_sound; eauto. intros [A B].
   apply topred_ok; auto. red. split. apply red_postincr; auto. exists w'; auto.
   apply not_invert_ok; simpl; intros; myinv. exploit do_deref_loc_complete; eauto. congruence.
@@ -1565,7 +1589,7 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; intuition congruence;
 Qed.
 
 Lemma step_exprlist_val_list:
-  forall m al, is_val_list al <> None -> step_exprlist al m = nil.
+  forall m sq al, is_val_list al <> None -> step_exprlist al m sq = nil.
 Proof.
   induction al; simpl; intros. 
   auto.
@@ -1578,9 +1602,9 @@ Qed.
 (** Completeness part 1: [step_expr] contains all possible non-error reducts. *)
 
 Lemma lred_topred:
-  forall l1 m1 l2 m2,
+  forall l1 m1 sq1 l2 m2,
   lred ge e l1 m1 l2 m2 ->
-  step_expr LV l1 m1 = topred (Lred l2 m2).
+  step_expr LV l1 m1 sq1 = topred (Lred l2 m2 sq1).
 Proof.
   induction 1; simpl.
 (* var local *)
@@ -1596,13 +1620,13 @@ Proof.
 Qed.
 
 Lemma rred_topred:
-  forall w' r1 m1 t r2 m2,
-  rred ge r1 m1 t r2 m2 -> possible_trace w t w' ->
-  step_expr RV r1 m1 = topred (Rred r2 m2 t).
+  forall w' r1 m1 sq1 t r2 m2 sq2,
+  rred ge r1 m1 sq1 t r2 m2 sq2 -> possible_trace w t w' ->
+  step_expr RV r1 m1 sq1 = topred (Rred r2 m2 sq2 t).
 Proof.
   induction 1; simpl; intros.
 (* valof *)
-  rewrite dec_eq_true; auto. rewrite (do_deref_loc_complete _ _ _ _ _ _ _ _ H H0). auto. 
+  rewrite dec_eq_true; auto. rewrite (do_deref_loc_complete _ _ _ _ _ _ _ _ _ H H0). auto. 
 (* addrof *)
   inv H. auto.
 (* unop *)
@@ -1624,11 +1648,11 @@ Proof.
 (* alignof *)
   inv H. auto.
 (* assign *)
-  rewrite dec_eq_true; auto. rewrite H. rewrite (do_assign_loc_complete _ _ _ _ _ _ _ _ _ H0 H1). auto.
+  rewrite dec_eq_true; auto. rewrite H. rewrite (do_assign_loc_complete _ _ _ _ _ _ _ _ _ _ _ H0 H1). auto.
 (* assignop *)
-  rewrite dec_eq_true; auto. rewrite (do_deref_loc_complete _ _ _ _ _ _ _ _ H H0). auto. 
+  rewrite dec_eq_true; auto. rewrite (do_deref_loc_complete _ _ _ _ _ _ _ _ _ H H0). auto. 
 (* postincr *)
-  rewrite dec_eq_true; auto. subst. rewrite (do_deref_loc_complete _ _ _ _ _ _ _ _ H H1). auto.
+  rewrite dec_eq_true; auto. subst. rewrite (do_deref_loc_complete _ _ _ _ _ _ _ _ _ H H1). auto.
 (* comma *)
   inv H0. rewrite dec_eq_true; auto.
 (* paren *)
@@ -1640,9 +1664,9 @@ Proof.
 Qed.
 
 Lemma callred_topred:
-  forall a fd args ty m,
+  forall a fd args ty m sq,
   callred ge a fd args ty ->
-  step_expr RV a m = topred (Callred fd args ty m).
+  step_expr RV a m sq = topred (Callred fd args ty m).
 Proof.
   induction 1; simpl.
   rewrite H2. exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
@@ -1669,22 +1693,22 @@ Proof.
 Qed.
 
 Lemma reducts_incl_val:
-  forall (A: Type) a m v ty (C: expr -> A) res,
-  is_val a = Some(v, ty) -> reducts_incl C (step_expr RV a m) res.
+  forall (A: Type) a m sq v ty (C: expr -> A) res,
+  is_val a = Some(v, ty) -> reducts_incl C (step_expr RV a m sq) res.
 Proof.
   intros. rewrite (is_val_inv _ _ _ H). apply reducts_incl_nil.
 Qed.
 
 Lemma reducts_incl_loc:
-  forall (A: Type) a m b ofs ty (C: expr -> A) res,
-  is_loc a = Some(b, ofs, ty) -> reducts_incl C (step_expr LV a m) res.
+  forall (A: Type) a m sq b ofs ty (C: expr -> A) res,
+  is_loc a = Some(b, ofs, ty) -> reducts_incl C (step_expr LV a m sq) res.
 Proof.
   intros. rewrite (is_loc_inv _ _ _ _ H). apply reducts_incl_nil.
 Qed.
 
 Lemma reducts_incl_listval:
-  forall (A: Type) a m vtl (C: exprlist -> A) res,
-  is_val_list a = Some vtl -> reducts_incl C (step_exprlist a m) res.
+  forall (A: Type) a m sq vtl (C: exprlist -> A) res,
+  is_val_list a = Some vtl -> reducts_incl C (step_exprlist a m sq) res.
 Proof.
   intros. rewrite step_exprlist_val_list. apply reducts_incl_nil. congruence.
 Qed.
@@ -1723,10 +1747,10 @@ Hint Resolve reducts_incl_val reducts_incl_loc reducts_incl_listval
 
 Lemma step_expr_context:
   forall from to C, context from to C ->
-  forall a m, reducts_incl C (step_expr from a m) (step_expr to (C a) m)
+  forall a m sq, reducts_incl C (step_expr from a m sq) (step_expr to (C a) m sq)
 with step_exprlist_context:
   forall from C, contextlist from C ->
-  forall a m, reducts_incl C (step_expr from a m) (step_exprlist (C a) m).
+  forall a m sq, reducts_incl C (step_expr from a m sq) (step_exprlist (C a) m sq).
 Proof.
   induction 1; simpl; intros.
 (* top *)
@@ -1797,7 +1821,7 @@ Proof.
   eapply reducts_incl_trans with (C' := fun x => Ebuiltin ef tyargs x ty). apply step_exprlist_context. auto. 
   destruct (is_val_list (C a)) as [vl|] eqn:?; eauto.
 (* comma *)
-  eapply reducts_incl_trans with (C' := fun x => Ecomma x e2 ty); eauto.
+  eapply reducts_incl_trans with (C' := fun x => Ecomma sp x e2 ty); eauto.
   destruct (is_val (C a)) as [[v ty']|] eqn:?; eauto.
 (* paren *)
   eapply reducts_incl_trans with (C' := fun x => Eparen x ty); eauto.
@@ -1816,11 +1840,11 @@ Qed.
     contains at least one [Stuckred] reduction. *)
 
 Lemma not_stuckred_imm_safe:
-  forall m a k,
-  (forall C, ~In (C, Stuckred) (step_expr k a m)) -> imm_safe_t k a m.
+  forall m sq a k,
+  (forall C, ~In (C, Stuckred) (step_expr k a m sq)) -> imm_safe_t k a m sq.
 Proof.
-  intros. generalize (step_expr_sound a k m). intros [A B]. 
-  destruct (step_expr k a m) as [|[C rd] res] eqn:?.
+  intros. generalize (step_expr_sound a k m sq). intros [A B]. 
+  destruct (step_expr k a m sq) as [|[C rd] res] eqn:?.
   specialize (B (refl_equal _)). destruct k.
   destruct a; simpl in B; try congruence. constructor.
   destruct a; simpl in B; try congruence. constructor.
@@ -1834,14 +1858,14 @@ Proof.
 Qed.
 
 Lemma not_imm_safe_stuck_red:
-  forall m a k C,
+  forall m sq a k C,
   context k RV C ->
-  ~imm_safe_t k a m ->
-  exists C', In (C', Stuckred) (step_expr RV (C a) m).
+  ~imm_safe_t k a m sq ->
+  exists C', In (C', Stuckred) (step_expr RV (C a) m sq).
 Proof.
   intros. 
-  assert (exists C', In (C', Stuckred) (step_expr k a m)).
-    destruct (classic (exists C', In (C', Stuckred) (step_expr k a m))); auto.
+  assert (exists C', In (C', Stuckred) (step_expr k a m sq)).
+    destruct (classic (exists C', In (C', Stuckred) (step_expr k a m sq))); auto.
     elim H0. apply not_stuckred_imm_safe. apply not_ex_all_not. auto. 
   destruct H1 as [C' IN].
   specialize (step_expr_context _ _ _ H a m). unfold reducts_incl. 
@@ -1852,11 +1876,11 @@ Qed.
 (** Connections between [imm_safe_t] and [imm_safe] *)
 
 Lemma imm_safe_imm_safe_t:
-  forall k a m,
-  imm_safe ge e k a m ->
-  imm_safe_t k a m \/
-  exists C, exists a1, exists t, exists a1', exists m',
-    context RV k C /\ a = C a1 /\ rred ge a1 m t a1' m' /\ forall w', ~possible_trace w t w'.
+  forall k a m sq,
+  imm_safe ge e k a m sq ->
+  imm_safe_t k a m sq \/
+  exists C, exists a1, exists t, exists a1', exists m', exists sq',
+    context RV k C /\ a = C a1 /\ rred ge a1 m sq t a1' m' sq' /\ forall w', ~possible_trace w t w'.
 Proof.
   intros. inv H. 
   left. apply imm_safe_t_val.
@@ -1864,7 +1888,7 @@ Proof.
   left. eapply imm_safe_t_lred; eauto.
   destruct (classic (exists w', possible_trace w t w')) as [[w' A] | A].
   left. eapply imm_safe_t_rred; eauto. 
-  right. exists C; exists e0; exists t; exists e'; exists m'; intuition. apply A; exists w'; auto.
+  right. exists C; exists e0; exists t; exists e'; exists m'; exists sq'; intuition. apply A; exists w'; auto.
   left. eapply imm_safe_t_callred; eauto.
 Qed.
 
@@ -1875,14 +1899,14 @@ Definition can_crash_world (w: world) (S: state) : Prop :=
   exists t, exists S', Csem.step ge S t S' /\ forall w', ~possible_trace w t w'.
 
 Theorem not_imm_safe_t:
-  forall K C a m f k,
+  forall K C a m sq f k,
   context K RV C ->
-  ~imm_safe_t K a m ->
-  Csem.step ge (ExprState f (C a) k e m) E0 Stuckstate \/ can_crash_world w (ExprState f (C a) k e m).
+  ~imm_safe_t K a m sq ->
+  Csem.step ge (ExprState f (C a) k e m sq) E0 Stuckstate \/ can_crash_world w (ExprState f (C a) k e m sq).
 Proof.
-  intros. destruct (classic (imm_safe ge e K a m)).
+  intros. destruct (classic (imm_safe ge e K a m sq)).
   exploit imm_safe_imm_safe_t; eauto. 
-  intros [A | [C1 [a1 [t [a1' [m' [A [B [D E]]]]]]]]]. contradiction.
+  intros [A | [C1 [a1 [t [a1' [m' [sq' [A [B [D E]]]]]]]]]]. contradiction.
   right. red. exists t; econstructor; split; auto. 
   left. rewrite B. eapply step_rred with (C := fun x => C(C1 x)). eauto. eauto. 
   left. left. eapply step_stuck; eauto.
@@ -1926,7 +1950,7 @@ Function sem_bind_parameters (w: world) (e: env) (m: mem) (l: list (ident * type
       match PTree.get id e with
          | Some (b, ty') =>
              check (type_eq ty ty');
-             do w', t, m1 <- do_assign_loc w ty m b Int.zero v1;
+             do w', t, m1, _ <- do_assign_loc w ty m empty_seqs b Int.zero v1;
              match t with nil => sem_bind_parameters w e m1 params lv | _ => None end
         | None => None
       end
@@ -1949,14 +1973,14 @@ Proof.
    induction 1; simpl; auto.
    rewrite H. rewrite dec_eq_true.
    assert (possible_trace w E0 w) by constructor.
-   rewrite (do_assign_loc_complete _ _ _ _ _ _ _ _ _ H0 H2).
+   rewrite (do_assign_loc_complete _ _ _ _ _ _ _ _ _ _ _ H0 H2).
    simpl. auto. 
 Qed.
 
 Definition expr_final_state (f: function) (k: cont) (e: env) (C_rd: (expr -> expr) * reduction) :=
   match snd C_rd with
-  | Lred a m => (E0, ExprState f (fst C_rd a) k e m)
-  | Rred a m t => (t, ExprState f (fst C_rd a) k e m)
+  | Lred a m sq => (E0, ExprState f (fst C_rd a) k e m sq)
+  | Rred a m sq t => (t, ExprState f (fst C_rd a) k e m sq)
   | Callred fd vargs ty m => (E0, Callstate fd vargs (Kcall f e (fst C_rd) ty k) m)
   | Stuck => (E0, Stuckstate)
   end.
@@ -1968,7 +1992,7 @@ Definition ret (S: state) : list (trace * state) := (E0, S) :: nil.
 Definition do_step (w: world) (s: state) : list (trace * state) :=
   match s with
 
-  | ExprState f a k e m =>
+  | ExprState f a k e m sq =>
       match is_val a with
       | Some(v, ty) =>
         match k with
@@ -1997,29 +2021,29 @@ Definition do_step (w: world) (s: state) : list (trace * state) :=
         end
 
       | None =>
-          map (expr_final_state f k e) (step_expr e w RV a m)
+          map (expr_final_state f k e) (step_expr e w RV a m sq)
       end
 
-  | State f (Sdo x) k e m => ret(ExprState f x (Kdo k) e m)
+  | State f (Sdo x) k e m => ret(ExprState f x (Kdo k) e m empty_seqs)
 
   | State f (Ssequence s1 s2) k e m => ret(State f s1 (Kseq s2 k) e m)
   | State f Sskip (Kseq s k) e m => ret (State f s k e m)
   | State f Scontinue (Kseq s k) e m => ret (State f Scontinue k e m)
   | State f Sbreak (Kseq s k) e m => ret (State f Sbreak k e m)
 
-  | State f (Sifthenelse a s1 s2) k e m => ret (ExprState f a (Kifthenelse s1 s2 k) e m)
+  | State f (Sifthenelse a s1 s2) k e m => ret (ExprState f a (Kifthenelse s1 s2 k) e m empty_seqs)
 
-  | State f (Swhile x s) k e m => ret (ExprState f x (Kwhile1 x s k) e m)
+  | State f (Swhile x s) k e m => ret (ExprState f x (Kwhile1 x s k) e m empty_seqs)
   | State f (Sskip|Scontinue) (Kwhile2 x s k) e m => ret (State f (Swhile x s) k e m)
   | State f Sbreak (Kwhile2 x s k) e m => ret (State f Sskip k e m)
 
   | State f (Sdowhile a s) k e m => ret (State f s (Kdowhile1 a s k) e m)
-  | State f (Sskip|Scontinue) (Kdowhile1 x s k) e m => ret (ExprState f x (Kdowhile2 x s k) e m)
+  | State f (Sskip|Scontinue) (Kdowhile1 x s k) e m => ret (ExprState f x (Kdowhile2 x s k) e m empty_seqs)
   | State f Sbreak (Kdowhile1 x s k) e m => ret (State f Sskip k e m)
 
   | State f (Sfor a1 a2 a3 s) k e m =>
       if is_skip a1
-      then ret (ExprState f a2 (Kfor2 a2 a3 s k) e m)
+      then ret (ExprState f a2 (Kfor2 a2 a3 s k) e m empty_seqs)
       else ret (State f a1 (Kseq (Sfor Sskip a2 a3 s) k) e m)
   | State f Sskip (Kfor3 a2 a3 s k) e m => ret (State f a3 (Kfor4 a2 a3 s k) e m)
   | State f Scontinue (Kfor3 a2 a3 s k) e m => ret (State f a3 (Kfor4 a2 a3 s k) e m)
@@ -2029,12 +2053,12 @@ Definition do_step (w: world) (s: state) : list (trace * state) :=
   | State f (Sreturn None) k e m =>
       do m' <- Mem.free_list m (blocks_of_env e);
       ret (Returnstate Vundef (call_cont k) m')
-  | State f (Sreturn (Some x)) k e m => ret (ExprState f x (Kreturn k) e m)
+  | State f (Sreturn (Some x)) k e m => ret (ExprState f x (Kreturn k) e m empty_seqs)
   | State f Sskip ((Kstop | Kcall _ _ _ _ _) as k) e m => 
       do m' <- Mem.free_list m (blocks_of_env e);
       ret (Returnstate Vundef k m')
 
-  | State f (Sswitch x sl) k e m => ret (ExprState f x (Kswitch1 sl k) e m)
+  | State f (Sswitch x sl) k e m => ret (ExprState f x (Kswitch1 sl k) e m empty_seqs)
   | State f (Sskip|Sbreak) (Kswitch2 k) e m => ret (State f Sskip k e m)
   | State f Scontinue (Kswitch2 k) e m => ret (State f Scontinue k e m)
 
@@ -2056,7 +2080,7 @@ Definition do_step (w: world) (s: state) : list (trace * state) :=
       | Some(w',t,v,m') => (t, Returnstate v k m') :: nil
       end
 
-  | Returnstate v (Kcall f e C ty k) m => ret (ExprState f (C (Eval v ty)) k e m)
+  | Returnstate v (Kcall f e C ty k) m => ret (ExprState f (C (Eval v ty)) k e m empty_seqs)
 
   | _ => nil
   end.
@@ -2101,12 +2125,12 @@ Proof with try (left; right; econstructor; eauto; fail).
   destruct v; myinv...
   (* expression reduces *)
   intros. exploit list_in_map_inv; eauto. intros [[C rd] [A B]].
-  generalize (step_expr_sound e w r RV m). unfold reducts_ok. intros [P Q].
+  generalize (step_expr_sound e w r RV m sq). unfold reducts_ok. intros [P Q].
   exploit P; eauto. intros [a' [k' [CTX [EQ RD]]]].
   unfold expr_final_state in A. simpl in A.
   destruct k'; destruct rd; inv A; simpl in RD; try contradiction. 
   (* lred *)
-  left; left; apply step_lred; auto.
+  destruct RD; subst. left; left. apply step_lred; auto.
   (* stuck lred *)
   exploit not_imm_safe_t; eauto. intros [R | R]; eauto.
   (* rred *)
@@ -2132,16 +2156,17 @@ Proof with try (left; right; econstructor; eauto; fail).
 Qed.
 
 Remark estep_not_val:
-  forall f a k e m t S, estep ge (ExprState f a k e m) t S -> is_val a = None.
+  forall f a k e m sq t S,
+  estep ge (ExprState f a k e m sq) t S -> is_val a = None.
 Proof.
   intros. 
   assert (forall b from to C, context from to C -> (from = to /\ C = fun x => x) \/ is_val (C b) = None).
     induction 1; simpl; auto. 
   inv H. 
-  destruct (H0 a0 _ _ _ H9) as [[A B] | A]. subst. inv H8; auto. auto.
-  destruct (H0 a0 _ _ _ H9) as [[A B] | A]. subst. inv H8; auto. auto.
-  destruct (H0 a0 _ _ _ H9) as [[A B] | A]. subst. inv H8; auto. auto.
-  destruct (H0 a0 _ _ _ H8) as [[A B] | A]. subst. destruct a0; auto. elim H9. constructor. auto.
+  destruct (H0 a0 _ _ _ H10) as [[A B] | A]. subst. inv H9; auto. auto.
+  destruct (H0 a0 _ _ _ H10) as [[A B] | A]. subst. inv H9; auto. auto.
+  destruct (H0 a0 _ _ _ H10) as [[A B] | A]. subst. inv H9; auto. auto.
+  destruct (H0 a0 _ _ _ H9) as [[A B] | A]. subst. destruct a0; auto. elim H10. constructor. auto.
 Qed.
 
 Theorem do_step_complete:
@@ -2153,19 +2178,19 @@ Proof with (unfold ret; auto with coqlib).
   inversion H; subst; exploit estep_not_val; eauto; intro NOTVAL.
 (* lred *)
   unfold do_step; rewrite NOTVAL.
-  change (E0, ExprState f (C a') k e m') with (expr_final_state f k e (C, Lred a' m')).
+  change (E0, ExprState f (C a') k e m' sq) with (expr_final_state f k e (C, Lred a' m' sq)).
   apply in_map.
   generalize (step_expr_context e w _ _ _ H1 a m). unfold reducts_incl.
   intro. replace C with (fun x => C x). apply H2. 
-  rewrite (lred_topred _ _ _ _ _ _ H0). unfold topred; auto with coqlib.
+  rewrite (lred_topred _ _ _ _ _ _ _ H0). unfold topred; auto with coqlib.
   apply extensionality; auto.
 (* rred *)
   unfold do_step; rewrite NOTVAL.
-  change (t, ExprState f (C a') k e m') with (expr_final_state f k e (C, Rred a' m' t)).
+  change (t, ExprState f (C a') k e m' sq') with (expr_final_state f k e (C, Rred a' m' sq' t)).
   apply in_map.
   generalize (step_expr_context e w _ _ _ H1 a m). unfold reducts_incl.
   intro. replace C with (fun x => C x). apply H2. 
-  rewrite (rred_topred _ _ _ _ _ _ _ _ H0 PT). unfold topred; auto with coqlib.
+  rewrite (rred_topred _ _ _ _ _ _ _ _ _ _ H0 PT). unfold topred; auto with coqlib.
   apply extensionality; auto.
 (* callred *)
   unfold do_step; rewrite NOTVAL.
@@ -2173,7 +2198,7 @@ Proof with (unfold ret; auto with coqlib).
   apply in_map.
   generalize (step_expr_context e w _ _ _ H1 a m). unfold reducts_incl.
   intro. replace C with (fun x => C x). apply H2. 
-  rewrite (callred_topred _ _ _ _ _ _ _ H0). unfold topred; auto with coqlib.
+  rewrite (callred_topred _ _ _ _ _ _ _ _ H0). unfold topred; auto with coqlib.
   apply extensionality; auto.
 (* stuck *)
   exploit not_imm_safe_stuck_red. eauto. red; intros; elim H1. eapply imm_safe_t_imm_safe. eauto.

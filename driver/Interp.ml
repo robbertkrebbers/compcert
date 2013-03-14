@@ -126,7 +126,7 @@ let print_state p (prog, ge, s) =
       fprintf p "in function %s, statement@ @[<hv 0>%a@]"
               (name_of_function prog f)
               PrintCsyntax.print_stmt s
-  | ExprState(f, r, k, e, m) ->
+  | ExprState(f, r, k, e, m, sq) ->
       PrintCsyntax.print_pointer_hook := print_pointer ge e;
       fprintf p "in function %s, expression@ @[<hv 0>%a@]"
               (name_of_function prog f)
@@ -224,7 +224,7 @@ let rank_state = function
 
 let mem_state = function
   | State(f, s, k, e, m) -> m
-  | ExprState(f, r, k, e, m) -> m
+  | ExprState(f, r, k, e, m, sq) -> m
   | Callstate(fd, args, k, m) -> m
   | Returnstate(res, k, m) -> m
   | Stuckstate -> assert false
@@ -238,8 +238,8 @@ let compare_state s1 s2 =
       let c = compare (f1,s1,e1) (f2,s2,e2) in if c <> 0 then c else
       let c = compare_cont k1 k2 in if c <> 0 then c else
       compare_mem m1 m2
-  | ExprState(f1,r1,k1,e1,m1), ExprState(f2,r2,k2,e2,m2) ->
-      let c = compare (f1,r1,e1) (f2,r2,e2) in if c <> 0 then c else
+  | ExprState(f1,r1,k1,e1,m1,sq1), ExprState(f2,r2,k2,e2,m2,sq2) ->
+      let c = compare (f1,r1,e1,sq1) (f2,r2,e2,sq2) in if c <> 0 then c else
       let c = compare_cont k1 k2 in if c <> 0 then c else
       compare_mem m1 m2
   | Callstate(fd1,args1,k1,m1), Callstate(fd2,args2,k2,m2) ->
@@ -435,7 +435,7 @@ let rec do_events p ge time w t =
 
 let (|||) a b = a || b (* strict boolean or *)
 
-let diagnose_stuck_expr p ge w f a kont e m =
+let diagnose_stuck_expr p ge w f a kont e m sq =
   let rec diagnose k a =
   (* diagnose subexpressions first *)
   let found =
@@ -451,13 +451,13 @@ let diagnose_stuck_expr p ge w f a kont e m =
     | RV, Eassign(l1, r2, ty) -> diagnose LV l1 ||| diagnose RV r2
     | RV, Eassignop(op, l1, r2, tyres, ty) -> diagnose LV l1 ||| diagnose RV r2
     | RV, Epostincr(id, l, ty) -> diagnose LV l
-    | RV, Ecomma(r1, r2, ty) -> diagnose RV r1
+    | RV, Ecomma(sp, r1, r2, ty) -> diagnose RV r1
     | RV, Eparen(r1, ty) -> diagnose RV r1
     | RV, Ecall(r1, rargs, ty) -> diagnose RV r1 ||| diagnose_list rargs
     | RV, Ebuiltin(ef, tyargs, rargs, ty) -> diagnose_list rargs
     | _, _ -> false in
   if found then true else begin
-    let l = Cexec.step_expr ge do_external_function do_inline_assembly e w k a m in
+    let l = Cexec.step_expr ge do_external_function do_inline_assembly e w k a m sq in
     if List.exists (fun (ctx,red) -> red = Cexec.Stuckred) l then begin
       PrintCsyntax.print_pointer_hook := print_pointer ge e;
       fprintf p "@[<hov 2>Stuck subexpression:@ %a@]@."
@@ -474,7 +474,7 @@ let diagnose_stuck_expr p ge w f a kont e m =
   in diagnose RV a
 
 let diagnose_stuck_state p ge w = function
-  | ExprState(f,a,k,e,m) -> ignore(diagnose_stuck_expr p ge w f a k e m)
+  | ExprState(f,a,k,e,m,sq) -> ignore(diagnose_stuck_expr p ge w f a k e m sq)
   | _ -> ()
 
 (* Exploration *)
