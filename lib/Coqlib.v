@@ -1249,6 +1249,13 @@ Proof.
   induction n; simpl; intros. elim H. destruct H; auto.
 Qed.
 
+Lemma list_repeat_plus:
+  forall (A: Type) n1 n2 (x : A),
+  list_repeat (n1 + n2) x = list_repeat n1 x ++ list_repeat n2 x.
+Proof.
+  intros. induction n1; simpl; decEq; auto.
+Qed.
+
 (** * Definitions and theorems over boolean types *)
 
 Definition proj_sumbool (P Q: Prop) (a: {P} + {Q}) : bool :=

@@ -113,7 +113,7 @@ Proof.
   intros. destruct cond; simpl in H;
   try (eapply default_needs_of_condition_sound; eauto; fail);
   simpl in *; FuncInv; InvAgree.
-- eapply maskzero_sound; eauto. 
+- eapply maskzero_sound; eauto.
 - destruct (Val.maskzero_bool v i) as [b'|] eqn:MZ; try discriminate.
   erewrite maskzero_sound; eauto.
 Qed.
@@ -188,5 +188,3 @@ Proof.
 Qed.
 
 End SOUNDNESS.
-
-

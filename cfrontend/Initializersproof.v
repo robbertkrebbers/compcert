@@ -513,6 +513,8 @@ Proof.
     destruct i; inv H5. intuition congruence. auto.
   destruct H4; subst. destruct (Genv.find_symbol ge b1); inv H. 
   rewrite Int.add_zero in H3. auto.
+  (* pointer seg *)
+  discriminate.
   (* undef *)
   discriminate.
 Qed.
@@ -524,7 +526,7 @@ Lemma transl_init_single_size:
   transl_init_single ty a = OK data ->
   Genv.init_data_size data = sizeof ty.
 Proof.
-  intros. monadInv H. destruct x0. 
+  intros. monadInv H. destruct x0.
   monadInv EQ2.
   destruct ty; try discriminate. 
   destruct i0; inv EQ2; auto.
@@ -539,6 +541,7 @@ Proof.
   inv EQ2.
   inv EQ2; auto.
   inv EQ2.
+  inv EQ2; auto.
   inv EQ2; auto.
   inv EQ2; auto.
 Qed.
@@ -780,5 +783,3 @@ Proof.
 Qed.
 
 End SOUNDNESS.
-
-

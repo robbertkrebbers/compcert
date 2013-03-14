@@ -2236,4 +2236,3 @@ Proof.
 Qed.
 
 End TRANSLATION.
-

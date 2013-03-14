@@ -585,7 +585,7 @@ Proof.
   }
   assert (VM: forall v x, vge (Ifptr Nonstack) x -> vmatch bc v x -> vmatch bc' v Vtop).
   {
-    intros. apply vmatch_ifptr; intros. subst v. 
+    intros. apply vmatch_ifptr; intros; subst v;
     inv H0; inv H; eapply PM; eauto.
   }
   assert (SM: forall b p, pge Nonstack p -> smatch bc m b p -> smatch bc' m b Ptop).
@@ -912,7 +912,7 @@ Proof.
   }
   assert (VMTOP: forall v v', val_inject j' v v' -> vmatch bc' v Vtop).
   {
-    intros. inv H; constructor. eapply PMTOP; eauto. 
+    intros. inv H; try constructor; eapply PMTOP; eauto.
   }
   assert (SMTOP: forall b, bc' b <> BCinvalid -> smatch bc' m' b Ptop).
   {
@@ -1815,8 +1815,3 @@ Proof.
   unfold aaddressing. rewrite AN. apply match_aptr_of_aval. 
   eapply eval_static_addressing_sound; eauto with va.
 Qed.
-
-
-  
-
-

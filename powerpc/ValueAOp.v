@@ -54,7 +54,7 @@ Definition eval_static_operation (op: operation) (vl: list aval): aval :=
   | Ofloatconst n, nil => if propagate_float_constants tt then F n else ftop
   | Oaddrsymbol id ofs, nil => Ptr (Gl id ofs)
   | Oaddrstack ofs, nil => Ptr (Stk ofs)
-  | Ocast8signed, v1 :: nil => sign_ext 8 v1
+  | Ocast8signed, v1 :: nil => sign_ext_8_alt v1
   | Ocast16signed, v1 :: nil => sign_ext 16 v1
   | Oadd, v1::v2::nil => add v1 v2
   | Oaddimm n, v1::nil => add v1 (I n)
@@ -170,4 +170,3 @@ Proof.
 Qed.
 
 End SOUNDNESS.
-

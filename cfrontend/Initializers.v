@@ -56,7 +56,7 @@ Fixpoint constval (a: expr) : res val :=
   | Eval v ty =>
       match v with
       | Vint _ | Vfloat _ | Vlong _ => OK v
-      | Vptr _ _ | Vundef => Error(msg "illegal constant")
+      | Vptr _ _ | Vptrseg _ _ _ | Vundef => Error(msg "illegal constant")
       end
   | Evalof l ty =>
       match access_mode ty with
@@ -215,5 +215,3 @@ with transl_init_struct (id: ident) (ty: type)
   | _, _ =>
       Error (msg "wrong number of elements in struct initializer")
   end.
-
-

@@ -115,7 +115,7 @@ Lemma needs_of_operation_sound:
 Proof.
   unfold needs_of_operation; intros; destruct op; try (eapply default_needs_of_operation_sound; eauto; fail);
   simpl in *; FuncInv; InvAgree; TrivialExists.
-- apply sign_ext_sound; auto. compute; auto. 
+- apply sign_ext_8_alt_sound; auto.
 - apply sign_ext_sound; auto. compute; auto.
 - apply add_sound; auto.
 - apply add_sound; auto with na.
@@ -151,7 +151,7 @@ Lemma operation_is_redundant_sound:
   vagree v arg1' nv.
 Proof.
   intros. destruct op; simpl in *; try discriminate; inv H1; FuncInv; subst.
-- apply sign_ext_redundant_sound; auto. omega.
+- apply sign_ext_8_alt_redundant_sound; auto.
 - apply sign_ext_redundant_sound; auto. omega.
 - apply andimm_redundant_sound; auto. 
 - apply orimm_redundant_sound; auto.
@@ -160,6 +160,3 @@ Proof.
 Qed.
 
 End SOUNDNESS.
-
-
-

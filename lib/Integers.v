@@ -3672,11 +3672,13 @@ Proof.
 Qed.
   
 Theorem bits_size_1:
-  forall x, x = zero \/ testbit x (Zpred (size x)) = true.
+  forall x, x = zero \/ testbit x (Zpred (size x)) = true /\ 0 < size x.
 Proof.
   intros. destruct (zeq (unsigned x) 0).
-  left. rewrite <- (repr_unsigned x). rewrite e; auto.
-  right. apply Ztestbit_size_1. generalize (unsigned_range x); omega.
+  * left. rewrite <- (repr_unsigned x). rewrite e; auto.
+  * right. split.
+    + apply Ztestbit_size_1. generalize (unsigned_range x); omega.
+    + destruct x as [[]]. now destruct n. easy. xomega.
 Qed.
 
 Theorem bits_size_2:
@@ -3690,7 +3692,7 @@ Theorem size_range:
   forall x, 0 <= size x <= zwordsize.
 Proof.
   intros; split. apply Zsize_pos.
-  destruct (bits_size_1 x).
+  destruct (bits_size_1 x) as [?|[??]].
   subst x; unfold size; rewrite unsigned_zero; simpl. generalize wordsize_pos; omega.
   destruct (zle (size x) zwordsize); auto. 
   rewrite bits_above in H. congruence. omega.
@@ -3703,7 +3705,7 @@ Theorem bits_size_3:
   size x <= n.
 Proof.
   intros. destruct (zle (size x) n). auto. 
-  destruct (bits_size_1 x). 
+  destruct (bits_size_1 x) as [|[??]]. 
   subst x. unfold size; rewrite unsigned_zero; assumption.
   rewrite (H0 (Z.pred (size x))) in H1. congruence. 
   generalize (size_range x); omega.
@@ -3764,9 +3766,9 @@ Theorem size_or:
   forall a b, size (or a b) = Z.max (size a) (size b).
 Proof.
   intros. generalize (size_range a) (size_range b); intros.
-  destruct (bits_size_1 a).
+  destruct (bits_size_1 a) as [|[? _]].
   subst a. rewrite size_zero. rewrite or_zero_l. zify; omega.
-  destruct (bits_size_1 b).
+  destruct (bits_size_1 b) as [|[? _]].
   subst b. rewrite size_zero. rewrite or_zero. zify; omega.
   zify. destruct H3 as [[P Q] | [P Q]]; subst. 
   apply bits_size_4. tauto. rewrite bits_or. rewrite H2. apply orb_true_r. 

@@ -29,6 +29,9 @@ Definition eq_block := peq.
 - a floating-point number;
 - a pointer: a pair of a memory address and an integer offset with respect
   to this address;
+- a byte-sized fragment of an opaque pointer. Such fragments are obtained
+  by reading the byte representation of a pointer as objects of character
+  type;
 - the [Vundef] value denoting an arbitrary bit pattern, such as the
   value of an uninitialized variable.
 *)
@@ -38,7 +41,20 @@ Inductive val: Type :=
   | Vint: int -> val
   | Vlong: int64 -> val
   | Vfloat: float -> val
-  | Vptr: block -> int -> val.
+  | Vptr: block -> int -> val
+  | Vptrseg: block -> int -> nat -> val.
+
+Inductive is_ptrseg: val -> Prop :=
+  intro_is_ptrseg: forall b ofs i, is_ptrseg (Vptrseg b ofs i).
+
+Lemma ptrseg_dec v : { is_ptrseg v } + { ~is_ptrseg v }.
+Proof.
+ refine
+  match v with
+  | Vptrseg _ _ _ => left _
+  | _ => right _
+  end; first [constructor | inversion 1].
+Defined.
 
 Definition Vzero: val := Vint Int.zero.
 Definition Vone: val := Vint Int.one.
@@ -63,6 +79,7 @@ Definition has_type (v: val) (t: typ) : Prop :=
   | Vfloat _, Tfloat => True
   | Vfloat f, Tsingle => Float.is_single f
   | Vptr _ _, Tint => True
+  | Vptrseg _ _ _, Tint => True
   | _, _ => False
   end.
 
@@ -190,6 +207,13 @@ Definition zero_ext (nbits: Z) (v: val) : val :=
 Definition sign_ext (nbits: Z) (v: val) : val :=
   match v with
   | Vint n => Vint(Int.sign_ext nbits n)
+  | _ => Vundef
+  end.
+
+Definition sign_ext_8_alt (v : val) : val :=
+  match v with
+  | Vint n => Vint (Int.sign_ext 8 n)
+  | Vptrseg b ofs i => Vptrseg b ofs i
   | _ => Vundef
   end.
 
@@ -681,6 +705,7 @@ Definition load_result (chunk: memory_chunk) (v: val) :=
   | Mint32, Vint n => Vint n
   | Mint32, Vptr b ofs => Vptr b ofs
   | Mint64, Vlong n => Vlong n
+  | (Mint8signed | Mint8unsigned | Mint32), Vptrseg b ofs i => Vptrseg b ofs i
   | Mfloat32, Vfloat f => Vfloat(Float.singleoffloat f)
   | Mfloat64, Vfloat f => Vfloat f
   | _, _ => Vundef
@@ -863,7 +888,6 @@ Proof.
   decEq. apply Int.mul_add_distr_l.
 Qed.
 
-
 Theorem mul_add_distr_r:
   forall x y z, mul x (add y z) = add (mul x y) (mul x z).
 Proof.
@@ -939,6 +963,11 @@ Proof.
   simpl. decEq. symmetry. eapply Int.modu_and; eauto.
 Qed.
 
+Lemma and_ptrseg v1 v2 : ~is_ptrseg (Val.and v1 v2).
+Proof.
+  now destruct v1, v2.
+Qed.
+
 Theorem and_commut: forall x y, and x y = and y x.
 Proof.
   destruct x; destruct y; simpl; auto. decEq. apply Int.and_commut.
@@ -950,6 +979,11 @@ Proof.
   decEq. apply Int.and_assoc.
 Qed.
 
+Lemma or_ptrseg v1 v2 : ~is_ptrseg (Val.or v1 v2).
+Proof.
+  now destruct v1, v2.
+Qed.
+
 Theorem or_commut: forall x y, or x y = or y x.
 Proof.
   destruct x; destruct y; simpl; auto. decEq. apply Int.or_commut.
@@ -959,6 +993,11 @@ Theorem or_assoc: forall x y z, or (or x y) z = or x (or y z).
 Proof.
   destruct x; destruct y; destruct z; simpl; auto.
   decEq. apply Int.or_assoc.
+Qed.
+
+Lemma xor_ptrseg v1 v2 : ~is_ptrseg (Val.xor v1 v2).
+Proof.
+  now destruct v1, v2.
 Qed.
 
 Theorem xor_commut: forall x y, xor x y = xor y x.
@@ -1215,7 +1254,7 @@ Proof.
 Qed.
 
 Lemma zero_ext_and:
-  forall n v, 
+  forall n v,
   0 < n < Int.zwordsize ->
   Val.zero_ext n v = Val.and v (Vint (Int.repr (two_p n - 1))).
 Proof.
@@ -1295,6 +1334,14 @@ Qed.
 
 Lemma sign_ext_lessdef:
   forall n v1 v2, lessdef v1 v2 -> lessdef (sign_ext n v1) (sign_ext n v2).
+Proof.
+  intros; inv H; simpl; auto.
+Qed.
+
+Lemma sign_ext_8_alt_lessdef:
+  forall v1 v2,
+  Val.lessdef v1 v2 ->
+  Val.lessdef (sign_ext_8_alt v1) (sign_ext_8_alt v2).
 Proof.
   intros; inv H; simpl; auto.
 Qed.
@@ -1393,6 +1440,11 @@ Inductive val_inject (mi: meminj): val -> val -> Prop :=
       mi b1 = Some (b2, delta) ->
       ofs2 = Int.add ofs1 (Int.repr delta) ->
       val_inject mi (Vptr b1 ofs1) (Vptr b2 ofs2)
+  | val_inject_ptrseg:
+      forall b1 ofs1 b2 ofs2 delta i,
+      mi b1 = Some (b2, delta) ->
+      ofs2 = Int.add ofs1 (Int.repr delta) ->
+      val_inject mi (Vptrseg b1 ofs1 i) (Vptrseg b2 ofs2 i)
   | val_inject_undef: forall v,
       val_inject mi Vundef v.
 
@@ -1560,7 +1612,7 @@ Lemma val_inject_incr:
   val_inject f1 v v' ->
   val_inject f2 v v'.
 Proof.
-  intros. inv H0; eauto.
+  intros. inv H0; econstructor; eauto.
 Qed.
 
 Lemma val_list_inject_incr:
@@ -1574,22 +1626,6 @@ Qed.
 
 Hint Resolve inject_incr_refl val_inject_incr val_list_inject_incr.
 
-Lemma val_inject_lessdef:
-  forall v1 v2, Val.lessdef v1 v2 <-> val_inject (fun b => Some(b, 0)) v1 v2.
-Proof.
-  intros; split; intros.
-  inv H; auto. destruct v2; econstructor; eauto. rewrite Int.add_zero; auto. 
-  inv H; auto. inv H0. rewrite Int.add_zero; auto.
-Qed.
-
-Lemma val_list_inject_lessdef:
-  forall vl1 vl2, Val.lessdef_list vl1 vl2 <-> val_list_inject (fun b => Some(b, 0)) vl1 vl2.
-Proof.
-  intros; split.
-  induction 1; constructor; auto. apply val_inject_lessdef; auto.
-  induction 1; constructor; auto. apply val_inject_lessdef; auto.
-Qed.
-
 (** The identity injection gives rise to the "less defined than" relation. *)
 
 Definition inject_id : meminj := fun b => Some(b, 0).
@@ -1598,11 +1634,33 @@ Lemma val_inject_id:
   forall v1 v2,
   val_inject inject_id v1 v2 <-> Val.lessdef v1 v2.
 Proof.
-  intros; split; intros.
-  inv H; auto. 
-  unfold inject_id in H0. inv H0. rewrite Int.add_zero. constructor.
-  inv H. destruct v2; econstructor. unfold inject_id; reflexivity. rewrite Int.add_zero; auto.
-  constructor.
+  unfold inject_id. intros; split; intros.
+  * inv H; auto. inv H0.
+    + rewrite Int.add_zero; auto.
+    + inv H0. rewrite Int.add_zero; auto.
+  * inv H; auto. destruct v2; econstructor; eauto.
+    + rewrite Int.add_zero; auto.
+    + rewrite Int.add_zero; auto.
+Qed.
+
+Lemma val_list_inject_id:
+  forall vl1 vl2, val_list_inject inject_id vl1 vl2 <-> Val.lessdef_list vl1 vl2.
+Proof.
+  intros; split; induction 1; constructor; try apply val_inject_id; auto.
+Qed.
+
+Lemma val_lessdef_inject_compose:
+  forall f v1 v2 v3,
+  Val.lessdef v1 v2 -> val_inject f v2 v3 -> val_inject f v1 v3.
+Proof.
+  intros. inv H. auto. auto.
+Qed.
+
+Lemma val_inject_lessdef_compose:
+  forall f v1 v2 v3,
+  val_inject f v1 v2 -> Val.lessdef v2 v3 -> val_inject f v1 v3.
+Proof.
+  intros. inv H0. auto. inv H. auto.
 Qed.
 
 (** Composing two memory injections *)
@@ -1623,7 +1681,11 @@ Lemma val_inject_compose:
   val_inject f v1 v2 -> val_inject f' v2 v3 ->
   val_inject (compose_meminj f f') v1 v3.
 Proof.
-  intros. inv H; auto; inv H0; auto. econstructor.
-  unfold compose_meminj; rewrite H1; rewrite H3; eauto. 
-  rewrite Int.add_assoc. decEq. unfold Int.add. apply Int.eqm_samerepr. auto with ints.
+  intros. inv H; auto; inv H0; auto.
+  * econstructor.
+    unfold compose_meminj; rewrite H1; rewrite H3; eauto.
+    rewrite Int.add_assoc. decEq. unfold Int.add. apply Int.eqm_samerepr. auto with ints.
+  * econstructor.
+    unfold compose_meminj; rewrite H1; rewrite H5; eauto.
+    rewrite Int.add_assoc. decEq. unfold Int.add. apply Int.eqm_samerepr. auto with ints.
 Qed. 

@@ -180,7 +180,7 @@ Definition eval_operation
   | Ofloatconst n, nil => Some (Vfloat n)
   | Oaddrsymbol s ofs, nil => Some (symbol_address genv s ofs) 
   | Oaddrstack ofs, nil => Some (Val.add sp (Vint ofs))
-  | Ocast8signed, v1::nil => Some (Val.sign_ext 8 v1)
+  | Ocast8signed, v1::nil => Some (Val.sign_ext_8_alt v1)
   | Ocast16signed, v1::nil => Some (Val.sign_ext 16 v1)
   | Oadd, v1::v2::nil => Some (Val.add v1 v2)
   | Oaddimm n, v1::nil => Some (Val.add v1 (Vint n))
@@ -767,7 +767,7 @@ Lemma eval_operation_inj:
 Proof.
   intros. destruct op; simpl in H1; simpl; FuncInv; InvInject; TrivialExists.
   inv H; simpl; econstructor; eauto. repeat rewrite Int.add_assoc. decEq. apply Int.add_commut.
-  inv H4; simpl; auto.
+  inv H4; simpl; auto. econstructor; eauto.
   inv H4; simpl; auto.
   apply Values.val_add_inject; auto.
   apply Values.val_add_inject; auto.
@@ -893,12 +893,12 @@ Lemma eval_condition_lessdef:
   eval_condition cond vl1 m1 = Some b ->
   eval_condition cond vl2 m2 = Some b.
 Proof.
-  intros. eapply eval_condition_inj with (f := fun b => Some(b, 0)) (m1 := m1).
+  intros. eapply eval_condition_inj with (f := inject_id) (m1 := m1).
   apply valid_pointer_extends; auto.
   apply weak_valid_pointer_extends; auto.
   apply weak_valid_pointer_no_overflow_extends; auto.
   apply valid_different_pointers_extends; auto.
-  rewrite <- val_list_inject_lessdef. eauto. auto.
+  apply val_list_inject_id; eauto. auto.
 Qed.
 
 Lemma eval_operation_lessdef:
@@ -908,19 +908,19 @@ Lemma eval_operation_lessdef:
   eval_operation genv sp op vl1 m1 = Some v1 ->
   exists v2, eval_operation genv sp op vl2 m2 = Some v2 /\ Val.lessdef v1 v2.
 Proof.
-  intros. rewrite val_list_inject_lessdef in H.
+  intros. rewrite <-val_list_inject_id in H.
   assert (exists v2 : val,
           eval_operation genv sp op vl2 m2 = Some v2
-          /\ val_inject (fun b => Some(b, 0)) v1 v2).
+          /\ val_inject inject_id v1 v2).
   eapply eval_operation_inj with (m1 := m1) (sp1 := sp).
-  intros. rewrite <- val_inject_lessdef; auto.
+  intros. rewrite val_inject_id; auto.
   apply valid_pointer_extends; auto.
   apply weak_valid_pointer_extends; auto.
   apply weak_valid_pointer_no_overflow_extends; auto.
   apply valid_different_pointers_extends; auto.
-  rewrite <- val_inject_lessdef; auto.
+  rewrite val_inject_id; auto.
   eauto. auto. 
-  destruct H2 as [v2 [A B]]. exists v2; split; auto. rewrite val_inject_lessdef; auto. 
+  destruct H2 as [v2 [A B]]. exists v2; split; auto. apply val_inject_id; auto. 
 Qed.
 
 Lemma eval_addressing_lessdef:
@@ -929,15 +929,15 @@ Lemma eval_addressing_lessdef:
   eval_addressing genv sp addr vl1 = Some v1 ->
   exists v2, eval_addressing genv sp addr vl2 = Some v2 /\ Val.lessdef v1 v2.
 Proof.
-  intros. rewrite val_list_inject_lessdef in H.
+  intros. rewrite <-val_list_inject_id in H.
   assert (exists v2 : val,
           eval_addressing genv sp addr vl2 = Some v2
-          /\ val_inject (fun b => Some(b, 0)) v1 v2).
+          /\ val_inject inject_id v1 v2).
   eapply eval_addressing_inj with (sp1 := sp).
-  intros. rewrite <- val_inject_lessdef; auto.
-  rewrite <- val_inject_lessdef; auto.
+  intros. rewrite val_inject_id; auto.
+  rewrite val_inject_id; auto.
   eauto. auto. 
-  destruct H1 as [v2 [A B]]. exists v2; split; auto. rewrite val_inject_lessdef; auto. 
+  destruct H1 as [v2 [A B]]. exists v2; split; auto. apply val_inject_id; auto. 
 Qed.
 
 End EVAL_LESSDEF.

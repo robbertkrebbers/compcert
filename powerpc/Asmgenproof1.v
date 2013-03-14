@@ -30,16 +30,17 @@ Require Import Conventions.
 Require Import Asmgenproof0.
 
 (** * Properties of low half/high half decomposition *)
-
 Lemma high_half_zero:
-  forall v, Val.add (high_half v) Vzero = high_half v.
+  forall v,
+  Val.add (high_half v) Vzero = high_half v.
 Proof.
-  intros. generalize (high_half_type v).
-  rewrite Val.add_commut. 
+  intros. generalize (high_half_type v). generalize (high_half_ptrseg v).
+  rewrite Val.add_commut.
   case (high_half v); simpl; intros; try contradiction.
-  auto. 
-  rewrite Int.add_commut; rewrite Int.add_zero; auto. 
-  rewrite Int.add_zero; auto. 
+  * auto. 
+  * rewrite Int.add_commut; rewrite Int.add_zero; auto. 
+  * rewrite Int.add_zero; auto.
+  * now destruct H.
 Qed.
 
 Lemma low_high_u:
@@ -1137,10 +1138,10 @@ Proof.
   }
   destruct chunk; monadInv H.
 - (* Mint8signed *)
-  assert (exists v1, Mem.loadv Mint8unsigned m a = Some v1 /\ v = Val.sign_ext 8 v1).
+  assert (exists v1, Mem.loadv Mint8unsigned m a = Some v1 /\ v = Val.sign_ext_8_alt v1).
   {
-    destruct a; simpl in *; try discriminate. 
-    rewrite Mem.load_int8_signed_unsigned in H1. 
+    destruct a; simpl in *; try discriminate.
+    rewrite Mem.load_int8_signed_unsigned_alt in H1. 
     destruct (Mem.load Mint8unsigned m b (Int.unsigned i)); simpl in H1; inv H1.
     exists v0; auto.
   }
@@ -1237,4 +1238,3 @@ Local Transparent destroyed_by_store.
 Qed.
 
 End CONSTRUCTORS.
-

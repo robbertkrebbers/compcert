@@ -306,8 +306,8 @@ Axiom load_cast:
   forall m chunk b ofs v,
   load chunk m b ofs = Some v ->
   match chunk with
-  | Mint8signed => v = Val.sign_ext 8 v
-  | Mint8unsigned => v = Val.zero_ext 8 v
+  | Mint8signed => ~is_ptrseg v -> v = Val.sign_ext 8 v
+  | Mint8unsigned => ~is_ptrseg v -> v = Val.zero_ext 8 v
   | Mint16signed => v = Val.sign_ext 16 v
   | Mint16unsigned => v = Val.zero_ext 16 v
   | Mfloat32 => v = Val.singleoffloat v
@@ -316,12 +316,12 @@ Axiom load_cast:
 
 Axiom load_int8_signed_unsigned:
   forall m b ofs,
+  (forall v, load Mint8unsigned m b ofs = Some v -> ~is_ptrseg v) ->
   load Mint8signed m b ofs = option_map (Val.sign_ext 8) (load Mint8unsigned m b ofs).
 
 Axiom load_int16_signed_unsigned:
   forall m b ofs,
   load Mint16signed m b ofs = option_map (Val.sign_ext 16) (load Mint16unsigned m b ofs).
-
 
 (** ** Properties of [loadbytes]. *)
 
@@ -441,6 +441,7 @@ Axiom load_store_other:
   \/ ofs + size_chunk chunk <= ofs' ->
   load chunk' m2 b' ofs' = load chunk' m1 b' ofs'.
 
+(*
 (** Integrity of pointer values. *)
 
 Axiom load_store_pointer_overlap:
@@ -457,12 +458,27 @@ Axiom load_store_pointer_mismatch:
   load chunk' m2 b ofs = Some v ->
   chunk <> Mint32 \/ chunk' <> Mint32 ->
   v = Vundef.
+*)
 Axiom load_pointer_store:
   forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
   forall chunk' b' ofs' v_b v_o,
-  load chunk' m2 b' ofs' = Some(Vptr v_b v_o) ->
-  (chunk = Mint32 /\ v = Vptr v_b v_o /\ chunk' = Mint32 /\ b' = b /\ ofs' = ofs)
-  \/ (b' <> b \/ ofs' + size_chunk chunk' <= ofs \/ ofs + size_chunk chunk <= ofs').
+    load chunk' m2 b' ofs' = Some (Vptr v_b v_o) ->
+  chunk' = Mint32 /\
+  (chunk = Mint32 /\ v = Vptr v_b v_o /\ b' = b /\ ofs' = ofs
+  \/ (exists v_i, (chunk = Mint8signed \/ chunk = Mint8unsigned) /\
+    v = Vptrseg v_b v_o v_i /\ b' = b /\ ofs' <= ofs < ofs' + size_chunk Mint32)
+  \/ (b' <> b \/ ofs' + size_chunk chunk' <= ofs \/ ofs + size_chunk chunk <= ofs')).
+Axiom load_pointer_segment_store:
+  forall chunk m1 b ofs v m2, store chunk m1 b ofs v = Some m2 ->
+  forall chunk' b' ofs' v_b v_o v_i,
+  load chunk' m2 b' ofs' = Some (Vptrseg v_b v_o v_i) ->
+  (chunk' = Mint8signed \/ chunk' = Mint8unsigned \/ chunk' = Mint32) /\
+  (chunk = Mint32 /\ v = Vptr v_b v_o /\ b' = b
+    /\ ofs <= ofs' < ofs + size_chunk Mint32
+  \/ (chunk = Mint8signed \/ chunk = Mint8unsigned \/ chunk = Mint32) /\
+    v = Vptrseg v_b v_o v_i /\ b' = b /\
+    ofs < ofs' + size_chunk chunk' /\ ofs' < ofs + size_chunk chunk
+  \/ (b' <> b \/ ofs' + size_chunk chunk' <= ofs \/ ofs + size_chunk chunk <= ofs')).
 
 (** Load-store properties for [loadbytes]. *)
 

@@ -735,7 +735,8 @@ Qed.
 
 Theorem eval_cast8signed: unary_constructor_sound cast8signed (Val.sign_ext 8).
 Proof.
-  red; intros. unfold cast8signed. TrivialExists.
+  red; intros. unfold cast8signed. destruct x; try solve [TrivialExists].
+  repeat econstructor; eauto.
 Qed.
 
 Theorem eval_cast8unsigned: unary_constructor_sound cast8unsigned (Val.zero_ext 8).

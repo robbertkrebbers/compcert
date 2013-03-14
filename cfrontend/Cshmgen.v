@@ -120,6 +120,7 @@ Definition make_cast_float (e: expr) (sz: floatsize) :=
 Definition make_cast (from to: type) (e: expr) :=
   match classify_cast from to with
   | cast_case_neutral => OK e
+  | cast_case_c2c si2 => OK e
   | cast_case_i2i sz2 si2 => OK (make_cast_int e sz2 si2)
   | cast_case_f2f sz2 => OK (make_cast_float e sz2)
   | cast_case_i2f si1 sz2 => OK (make_floatofint e si1 sz2)

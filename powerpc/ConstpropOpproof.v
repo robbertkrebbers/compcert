@@ -291,7 +291,7 @@ Lemma make_cast8signed_correct:
   forall r x,
   vmatch bc rs#r x ->
   let (op, args) := make_cast8signed r x in
-  exists v, eval_operation ge (Vptr sp Int.zero) op rs##args m = Some v /\ Val.lessdef (Val.sign_ext 8 rs#r) v.
+  exists v, eval_operation ge (Vptr sp Int.zero) op rs##args m = Some v /\ Val.lessdef (Val.sign_ext_8_alt rs#r) v.
 Proof.
   intros; unfold make_cast8signed. destruct (vincl x (Sgn 8)) eqn:INCL. 
   exists rs#r; split; auto. 

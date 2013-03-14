@@ -496,11 +496,12 @@ Proof.
 Qed.
 
 Remark getN_setN_same:
-  forall vl p c,
-  getN (length vl) p (setN vl p c) = vl.
+  forall vl p c n,
+  n = length vl ->
+  getN n p (setN vl p c) = vl.
 Proof.
-  induction vl; intros; simpl.
-  auto.
+  intros vl p c n ->. revert p c.
+  induction vl; intros; simpl; auto.
   decEq. 
   rewrite setN_outside. apply ZMap.gss. omega. 
   apply IHvl. 
@@ -535,7 +536,68 @@ Qed.
 Remark setN_default:
   forall vl q c, fst (setN vl q c) = fst c.
 Proof.
-  induction vl; simpl; intros. auto. rewrite IHvl. auto. 
+  induction vl; simpl; intros. auto. rewrite IHvl. auto.
+Qed. 
+Lemma getN_init_undef:
+  forall n ofs, getN n ofs (ZMap.init Undef) = list_repeat n Undef.
+Proof.
+  induction n; simpl; intros; f_equal; auto. now rewrite ZMap.gi.
+Qed.
+
+Lemma setN_property:
+  forall (P: memval -> Prop) vl p q c,
+  (forall v, In v vl -> P v) ->
+  p <= q < p + Z_of_nat (length vl) ->
+  P(ZMap.get q (setN vl p c)).
+Proof.
+  induction vl; intros.
+  simpl in H0. omegaContradiction.
+  simpl length in H0. rewrite inj_S in H0. simpl. 
+  destruct (zeq p q). subst q. rewrite setN_outside. rewrite ZMap.gss. 
+  auto with coqlib. omega.
+  apply IHvl. auto with coqlib. omega.
+Qed.
+
+Lemma getN_in:
+  forall c q n p,
+  p <= q < p + Z_of_nat n ->
+  In (ZMap.get q c) (getN n p c).
+Proof.
+  induction n; intros.
+  simpl in H; omegaContradiction.
+  rewrite inj_S in H. simpl. destruct (zeq p q).
+  subst q. auto.
+  right. apply IHn. omega. 
+Qed.
+
+Lemma get_setN:
+  forall d vl c p i,
+  (i < length vl)%nat ->
+  ZMap.get (p + Z.of_nat i) (setN vl p c) = nth i vl d.
+Proof.
+  induction vl as [|mv vl IH]; intros c p [|i] ?; simpl in *; try omega.
+  { now rewrite Z.add_0_r, setN_outside, ZMap.gss by omega. }
+  now rewrite Zpos_P_of_succ_nat, <-Z.add_1_l, Z.add_assoc, IH by omega.
+Qed.
+
+Lemma getN_setN_overlap:
+  forall vl p q c n,
+  n <> 0%nat -> length vl <> 0%nat ->
+  q < p + Z.of_nat (length vl) -> p < q + Z.of_nat n ->
+  exists mv, In mv (getN n q (setN vl p c)) /\ In mv vl.
+Proof.
+  intros. destruct (Z_lt_le_dec q p).
+  * destruct vl as [|x vl]; [intuition|].
+    exists x; simpl; split; auto.
+    assert (ZMap.get p (setN vl (p + 1) (ZMap.set p x c)) = x) as Hx.
+    { now rewrite setN_outside, ZMap.gss by omega. }
+    rewrite <-Hx at 1. apply getN_in; omega.
+  * assert (exists i, q = p + Z.of_nat i) as [i ->].
+    { exists (Z.to_nat (q - p)). rewrite Z2Nat.id by omega. omega. }
+    exists (nth i vl Undef); split.
+    { rewrite <-(get_setN Undef vl c p) by omega.
+      apply getN_in; omega. }
+    apply nth_In; omega.
 Qed.
 
 (** [store chunk m b ofs v] perform a write in memory state [m].
@@ -686,8 +748,8 @@ Theorem load_cast:
   forall m chunk b ofs v,
   load chunk m b ofs = Some v ->
   match chunk with
-  | Mint8signed => v = Val.sign_ext 8 v
-  | Mint8unsigned => v = Val.zero_ext 8 v
+  | Mint8signed => ~is_ptrseg v -> v = Val.sign_ext 8 v
+  | Mint8unsigned => ~is_ptrseg v -> v = Val.zero_ext 8 v
   | Mint16signed => v = Val.sign_ext 16 v
   | Mint16unsigned => v = Val.zero_ext 16 v
   | Mfloat32 => v = Val.singleoffloat v
@@ -701,16 +763,24 @@ Qed.
 
 Theorem load_int8_signed_unsigned:
   forall m b ofs,
+  (forall v, load Mint8unsigned m b ofs = Some v -> ~is_ptrseg v) ->
   load Mint8signed m b ofs = option_map (Val.sign_ext 8) (load Mint8unsigned m b ofs).
 Proof.
-  intros. unfold load.
-  change (size_chunk_nat Mint8signed) with (size_chunk_nat Mint8unsigned).
-  set (cl := getN (size_chunk_nat Mint8unsigned) ofs m.(mem_contents)#b).
-  destruct (valid_access_dec m Mint8signed b ofs Readable).
-  rewrite pred_dec_true; auto. unfold decode_val. 
-  destruct (proj_bytes cl); auto.
-  simpl. decEq. decEq. rewrite Int.sign_ext_zero_ext. auto. compute; auto.
-  rewrite pred_dec_false; auto.
+  intros until 0. unfold load.
+  destruct (valid_access_dec _ Mint8signed _ _ _); [|now rewrite pred_dec_false].
+  rewrite pred_dec_true; auto. simpl. intros.
+  rewrite decode_val_int8_signed_unsigned; auto.
+  rewrite decode_val_int8_signed_unsigned_ptrseg; eauto.
+Qed.
+
+Theorem load_int8_signed_unsigned_alt:
+  forall m b ofs,
+  load Mint8signed m b ofs = option_map Val.sign_ext_8_alt (load Mint8unsigned m b ofs).
+Proof.
+  intros until 0. unfold load.
+  destruct (valid_access_dec _ Mint8signed _ _ _); [|now rewrite pred_dec_false].
+  rewrite pred_dec_true; auto. simpl. intros.
+  rewrite decode_val_int8_signed_unsigned_alt; auto.
 Qed.
 
 Theorem load_int16_signed_unsigned:
@@ -718,13 +788,9 @@ Theorem load_int16_signed_unsigned:
   load Mint16signed m b ofs = option_map (Val.sign_ext 16) (load Mint16unsigned m b ofs).
 Proof.
   intros. unfold load.
-  change (size_chunk_nat Mint16signed) with (size_chunk_nat Mint16unsigned).
-  set (cl := getN (size_chunk_nat Mint16unsigned) ofs m.(mem_contents)#b).
-  destruct (valid_access_dec m Mint16signed b ofs Readable).
-  rewrite pred_dec_true; auto. unfold decode_val. 
-  destruct (proj_bytes cl); auto.
-  simpl. decEq. decEq. rewrite Int.sign_ext_zero_ext. auto. compute; auto.
-  rewrite pred_dec_false; auto.
+  destruct (valid_access_dec _ Mint16signed _ _ _); [|now rewrite pred_dec_false].
+  rewrite pred_dec_true; auto.
+  now rewrite decode_val_int16_signed_unsigned.
 Qed.
 
 (*
@@ -958,6 +1024,16 @@ Proof.
   contradiction.
 Defined.
 
+Theorem store_valid_access:
+  forall m1 m2 chunk b ofs v,
+  store chunk m1 b ofs v = Some m2 ->
+  valid_access m1 chunk b ofs Writable.
+Proof.
+  intros until v. unfold store.
+  destruct (valid_access_dec m1 chunk b ofs Writable); intros.
+  auto. 
+  congruence.
+Qed.
 Hint Local Resolve valid_access_store: mem.
 
 Section STORE.
@@ -1055,10 +1131,9 @@ Proof.
   intros [v' LOAD].
   exists v'; split; auto.
   exploit load_result; eauto. intros B. 
-  rewrite B. rewrite store_mem_contents; simpl. 
-  rewrite PMap.gss.
-  replace (size_chunk_nat chunk') with (length (encode_val chunk v)).
-  rewrite getN_setN_same. apply decode_encode_val_general. 
+  rewrite B. rewrite store_mem_contents; simpl.
+  rewrite PMap.gss, getN_setN_same.
+  apply decode_encode_val_general.
   rewrite encode_val_length. repeat rewrite size_chunk_conv in H. 
   apply inj_eq_rev; auto.
 Qed.
@@ -1105,12 +1180,8 @@ Theorem loadbytes_store_same:
 Proof.
   intros.
   assert (valid_access m2 chunk b ofs Readable) by eauto with mem.
-  unfold loadbytes. rewrite pred_dec_true. rewrite store_mem_contents; simpl. 
-  rewrite PMap.gss.
-  replace (nat_of_Z (size_chunk chunk)) with (length (encode_val chunk v)).
-  rewrite getN_setN_same. auto.
-  rewrite encode_val_length. auto.
-  apply H. 
+  unfold loadbytes. rewrite pred_dec_true by (apply H). rewrite store_mem_contents; simpl.
+  rewrite PMap.gss, getN_setN_same by (rewrite encode_val_length; auto); auto.
 Qed.
 
 Theorem loadbytes_store_other:
@@ -1138,103 +1209,98 @@ Proof.
   red; intro; elim n0; red; intros; eauto with mem.
 Qed.
 
-Lemma setN_property:
-  forall (P: memval -> Prop) vl p q c,
-  (forall v, In v vl -> P v) ->
-  p <= q < p + Z_of_nat (length vl) ->
-  P(ZMap.get q (setN vl p c)).
-Proof.
-  induction vl; intros.
-  simpl in H0. omegaContradiction.
-  simpl length in H0. rewrite inj_S in H0. simpl. 
-  destruct (zeq p q). subst q. rewrite setN_outside. rewrite ZMap.gss. 
-  auto with coqlib. omega.
-  apply IHvl. auto with coqlib. omega.
-Qed.
-
-Lemma getN_in:
-  forall c q n p,
-  p <= q < p + Z_of_nat n ->
-  In (ZMap.get q c) (getN n p c).
-Proof.
-  induction n; intros.
-  simpl in H; omegaContradiction.
-  rewrite inj_S in H. simpl. destruct (zeq p q).
-  subst q. auto.
-  right. apply IHn. omega. 
-Qed.
+(** ENO MOVE *)
 
 Theorem load_pointer_store:
   forall chunk' b' ofs' v_b v_o,
-  load chunk' m2 b' ofs' = Some(Vptr v_b v_o) ->
-  (chunk = Mint32 /\ v = Vptr v_b v_o /\ chunk' = Mint32 /\ b' = b /\ ofs' = ofs)
-  \/ (b' <> b \/ ofs' + size_chunk chunk' <= ofs \/ ofs + size_chunk chunk <= ofs').
+  load chunk' m2 b' ofs' = Some (Vptr v_b v_o) ->
+  chunk' = Mint32 /\
+  (chunk = Mint32 /\ v = Vptr v_b v_o /\ b' = b /\ ofs' = ofs
+  \/ (exists v_i, (chunk = Mint8signed \/ chunk = Mint8unsigned) /\
+    v = Vptrseg v_b v_o v_i /\ b' = b /\ ofs' <= ofs < ofs' + size_chunk Mint32)
+  \/ (b' <> b \/ ofs' + size_chunk chunk' <= ofs \/ ofs + size_chunk chunk <= ofs')).
 Proof.
-  intros. exploit load_result; eauto. rewrite store_mem_contents; simpl. 
-  rewrite PMap.gsspec. destruct (peq b' b); auto. subst b'. intro DEC.
-  destruct (zle (ofs' + size_chunk chunk') ofs); auto.
-  destruct (zle (ofs + size_chunk chunk) ofs'); auto.
-  destruct (size_chunk_nat_pos chunk) as [sz SZ].
-  destruct (size_chunk_nat_pos chunk') as [sz' SZ'].
-  exploit decode_pointer_shape; eauto. intros [CHUNK' PSHAPE]. clear CHUNK'.
-  generalize (encode_val_shape chunk v). intro VSHAPE.  
+  intros until 0; intros LOAD.
+  pose proof (store_valid_access _ _ _ _ _ _ STORE) as [_ ALIGN].
+  pose proof (load_valid_access _ _ _ _ _ LOAD) as [_ ALIGN'].
+  apply load_result in LOAD. rewrite store_mem_contents, PMap.gsspec in LOAD.
+  symmetry in LOAD; apply decode_val_pointer_inv in LOAD; destruct LOAD as [-> PSHAPE].
+  split; auto. destruct (peq b' b) as [->|?]; auto.
   set (c := m1.(mem_contents)#b) in *.
-  set (c' := setN (encode_val chunk v) ofs c) in *.
-  destruct (zeq ofs ofs').
+  destruct (zle (ofs' + size_chunk Mint32) ofs); auto.
+  destruct (zle (ofs + size_chunk chunk) ofs'); auto.
 
-(* 1.  ofs = ofs':  must be same chunks and same value *)
-  subst ofs'. inv VSHAPE. 
-  exploit decode_val_pointer_inv; eauto. intros [A B].
-  subst chunk'. simpl in B. inv B.
-  generalize H4. unfold c'. rewrite <- H0. simpl. 
-  rewrite setN_outside; try omega. rewrite ZMap.gss. intros.
-  exploit (encode_val_pointer_inv chunk v v_b v_o). 
-  rewrite <- H0. subst mv1. eauto. intros [C [D E]].
-  left; auto.
-
-  destruct (zlt ofs ofs').
-
-(* 2. ofs < ofs':
-
-      ofs   ofs'   ofs+|chunk|
-       [-------------------]       write
-            [-------------------]  read
-
-   The byte at ofs' satisfies memval_valid_cont (consequence of write).
-   For the read to return a pointer, it must satisfy ~memval_valid_cont. 
-*)
-  elimtype False.
-  assert (~memval_valid_cont (ZMap.get ofs' c')).
-    rewrite SZ' in PSHAPE. simpl in PSHAPE. inv PSHAPE. auto.
-  assert (memval_valid_cont (ZMap.get ofs' c')).
-    inv VSHAPE. unfold c'. rewrite <- H1. simpl. 
-    apply setN_property. auto.
-    assert (length mvl = sz). 
-      generalize (encode_val_length chunk v). rewrite <- H1. rewrite SZ. 
-      simpl; congruence.
-    rewrite H4. rewrite size_chunk_conv in *. omega.
-  contradiction.
-
-(* 3. ofs > ofs':
-
-      ofs'   ofs   ofs'+|chunk'|
-              [-------------------]  write
-        [----------------]           read
-
-   The byte at ofs satisfies memval_valid_first (consequence of write).
-   For the read to return a pointer, it must satisfy ~memval_valid_first.
-*)
-  elimtype False.
-  assert (memval_valid_first (ZMap.get ofs c')).
-    inv VSHAPE. unfold c'. rewrite <- H0. simpl. 
-    rewrite setN_outside. rewrite ZMap.gss. auto. omega.
-  assert (~memval_valid_first (ZMap.get ofs c')).
-    rewrite SZ' in PSHAPE. simpl in PSHAPE. inv PSHAPE. 
-    apply H4. apply getN_in. rewrite size_chunk_conv in *.
-    rewrite SZ' in *. rewrite inj_S in *. omega.
-  contradiction.
+  destruct (chunk_eq chunk Mint32) as [->|].
+  * assert (ofs' = ofs); subst.
+    { destruct ALIGN', ALIGN; simpl in *; omega. }
+    rewrite getN_setN_same in PSHAPE by (now rewrite encode_val_length).
+    destruct v; unfold encode_val in PSHAPE; try discriminate.
+    apply (f_equal rev_if_be) in PSHAPE; rewrite !rev_if_be_involutive in PSHAPE.
+    apply (f_equal proj_pointer) in PSHAPE; rewrite !proj_inj_pointer in PSHAPE.
+    intuition congruence.
+  * right.
+    destruct (getN_setN_overlap (encode_val chunk v) ofs ofs' c (size_chunk_nat Mint32))
+      as [mv [Hmv1 Hmv2]]; rewrite ?encode_val_length, <-?size_chunk_conv.
+    { easy. }
+    { now destruct (size_chunk_nat_pos chunk) as [? ->]. }
+    { omega. }
+    { simpl in *; omega. }
+    rewrite PSHAPE, in_rev_if_be in Hmv1.
+    destruct (inj_pointer_encode_val_overlap chunk
+      (size_chunk_nat Mint32) v mv v_b v_o) as (v_i&CHUNK&?); auto.
+    left. exists v_i; repeat split; auto.
+    { destruct CHUNK as [-> | ->]; simpl in *; omega. }
+    { omega. }
 Qed.
 
+Theorem load_pointer_segment_store:
+  forall chunk' b' ofs' v_b v_o v_i,
+  load chunk' m2 b' ofs' = Some (Vptrseg v_b v_o v_i) ->
+  (chunk' = Mint8signed \/ chunk' = Mint8unsigned \/ chunk' = Mint32) /\
+  (chunk = Mint32 /\ v = Vptr v_b v_o /\ b' = b
+    /\ ofs <= ofs' < ofs + size_chunk Mint32
+  \/ (chunk = Mint8signed \/ chunk = Mint8unsigned \/ chunk = Mint32) /\
+    v = Vptrseg v_b v_o v_i /\ b' = b /\
+    ofs < ofs' + size_chunk chunk' /\ ofs' < ofs + size_chunk chunk
+  \/ (b' <> b \/ ofs' + size_chunk chunk' <= ofs \/ ofs + size_chunk chunk <= ofs')).
+Proof.
+  intros until 0; intros LOAD.
+  pose proof (store_valid_access _ _ _ _ _ _ STORE) as [_ ALIGN].
+  pose proof (load_valid_access _ _ _ _ _ LOAD) as [_ ALIGN'].
+  apply load_result in LOAD. rewrite store_mem_contents, PMap.gsspec in LOAD.
+  symmetry in LOAD; apply decode_val_pointer_seg_inv in LOAD. destruct LOAD as [? PSHAPE].
+  split; auto. destruct (peq b' b) as [->|?]; auto.
+  set (c := m1.(mem_contents)#b) in *.
+  destruct (zle (ofs' + size_chunk chunk') ofs); auto.
+  destruct (zle (ofs + size_chunk chunk) ofs'); auto.
+
+  destruct (getN_setN_overlap (encode_val chunk v) ofs ofs' c (size_chunk_nat chunk'))
+      as [mv [Hmv1 Hmv2]]; rewrite ?encode_val_length, <-?size_chunk_conv; try omega.
+    { now destruct (size_chunk_nat_pos chunk') as [? ->]. }
+    { now destruct (size_chunk_nat_pos chunk) as [? ->]. }
+  rewrite PSHAPE, in_rev_if_be in Hmv1.
+
+  destruct (chunk_eq chunk Mint32) as [->|].
+  * destruct (chunk_eq chunk' Mint32) as [->|].
+    { assert (ofs' = ofs); subst.
+      { destruct ALIGN', ALIGN; simpl in *; omega. }
+      rewrite getN_setN_same in PSHAPE by (now rewrite encode_val_length).
+      destruct v; unfold encode_val in PSHAPE; try discriminate.
+      apply (f_equal rev_if_be) in PSHAPE; rewrite !rev_if_be_involutive in PSHAPE.
+      apply (f_equal (proj_pointer_seg 4)) in PSHAPE.
+      rewrite !proj_inj_pointer_seg in PSHAPE by (compute; omega).
+      right; left. repeat split; congruence || omega. }
+    unfold size_chunk_nat in *.
+    assert (size_chunk chunk' = 1) as ->.
+    { destruct H as [->|[->| ->]]; simpl; intuition. }
+    destruct (inj_pointer_seg_1_encode_val_overlap Mint32
+      v mv v_b v_o v_i) as [[??]|[??]]; auto.
+    + left. repeat split; tauto || omega.
+    + right; left. repeat split; tauto || omega.
+  * destruct (inj_pointer_seg_encode_val_overlap chunk
+      (size_chunk_nat chunk') v mv v_b v_o v_i); auto.
+    right; left. repeat split; tauto || omega.
+Qed.
 End STORE.
 
 Local Hint Resolve perm_store_1 perm_store_2: mem.
@@ -1242,6 +1308,7 @@ Local Hint Resolve store_valid_block_1 store_valid_block_2: mem.
 Local Hint Resolve store_valid_access_1 store_valid_access_2
              store_valid_access_3: mem.
 
+(*
 Theorem load_store_pointer_overlap:
   forall chunk m1 b ofs v_b v_o m2 chunk' ofs' v,
   store chunk m1 b ofs (Vptr v_b v_o) = Some m2 ->
@@ -1348,6 +1415,7 @@ Transparent encode_val.
   destruct chunk'; auto. intuition.
   omega.
 Qed.
+*)
 
 Lemma store_similar_chunks:
   forall chunk1 chunk2 v1 v2 m b ofs,
@@ -1408,9 +1476,8 @@ Theorem store_float32_truncate:
   store Mfloat32 m b ofs (Vfloat (Float.singleoffloat n)) =
   store Mfloat32 m b ofs (Vfloat n).
 Proof.
-  intros. apply store_similar_chunks. simpl. decEq.
-  repeat rewrite encode_float32_eq. rewrite Float.bits_of_singleoffloat. auto.
-  auto.
+  intros. apply store_similar_chunks; auto. unfold encode_val.
+  now rewrite Float.bits_of_singleoffloat.
 Qed.
 
 (*
@@ -1569,8 +1636,8 @@ Proof.
   destruct (range_perm_dec m1 b ofs (ofs + Z_of_nat (length bytes)) Cur Writable);
   try discriminate.
   rewrite pred_dec_true. 
-  decEq. inv STORE; simpl. rewrite PMap.gss. rewrite nat_of_Z_of_nat. 
-  apply getN_setN_same. 
+  decEq. inv STORE; simpl. rewrite PMap.gss. rewrite nat_of_Z_of_nat.
+  now rewrite getN_setN_same by easy. 
   red; eauto with mem. 
 Qed.
 
@@ -1874,9 +1941,10 @@ Theorem load_alloc_same:
   load chunk m2 b ofs = Some v ->
   v = Vundef.
 Proof.
-  intros. exploit load_result; eauto. intro. rewrite H0. 
-  injection ALLOC; intros. rewrite <- H2; simpl. rewrite <- H1.
-  rewrite PMap.gss. destruct chunk; simpl; repeat rewrite ZMap.gi; reflexivity.
+  intros. apply load_result in H. subst.
+  injection ALLOC; intros. rewrite <-H, <-H0; simpl.
+  rewrite PMap.gss, getN_init_undef.
+  apply decode_val_repeat_undef. destruct chunk; compute; omega.
 Qed.
 
 Theorem load_alloc_same':
@@ -3103,6 +3171,22 @@ Proof.
   eapply perm_free_2. eexact H0. instantiate (1 := ofs); omega. eauto. 
 Qed.
 
+Theorem free_list_parallel_extends:
+  forall m1 m2 l m1',
+  extends m1 m2 ->
+  free_list m1 l = Some m1' ->
+  exists m2',
+     free_list m2 l = Some m2'
+  /\ extends m1' m2'.
+Proof.
+  intros ???. revert m1 m2. induction l as [|[[b l] u]??]; simpl.
+  * intros. inv H0. eauto.
+  * intros. destruct (free m1 b l u) eqn:?; try discriminate.
+    exploit free_parallel_extends; eauto. intros (?&EQ&?).
+    exploit IHl; eauto. intros (?&?&?).
+    rewrite EQ. eauto.
+Qed.
+
 Theorem valid_block_extends:
   forall m1 m2 b,
   extends m1 m2 ->
@@ -4012,20 +4096,6 @@ Proof.
     ((Int.unsigned ofs - 1) + delta1) by omega.
   destruct H0; eauto using perm_inj.
   rewrite H. omega.
-Qed.
-
-Lemma val_lessdef_inject_compose:
-  forall f v1 v2 v3,
-  Val.lessdef v1 v2 -> val_inject f v2 v3 -> val_inject f v1 v3.
-Proof.
-  intros. inv H. auto. auto.
-Qed.
-
-Lemma val_inject_lessdef_compose:
-  forall f v1 v2 v3,
-  val_inject f v1 v2 -> Val.lessdef v2 v3 -> val_inject f v1 v3.
-Proof.
-  intros. inv H0. auto. inv H. auto.
 Qed.
 
 Lemma extends_inject_compose:

@@ -516,6 +516,7 @@ Proof.
   inv H2; destruct (type_of_index idx); simpl in *; try contradiction; subst; auto.
   rewrite Floats.Float.singleoffloat_of_single; auto. 
   econstructor; eauto.
+  econstructor; eauto.
 Qed.
 
 Lemma gss_index_contains_inj':
@@ -528,6 +529,7 @@ Proof.
   intros. exploit gss_index_contains_base; eauto. intros [v'' [A B]].
   exists v''; split; auto.
   inv H1; destruct (type_of_index idx); simpl in *; try contradiction; subst; auto. 
+  econstructor; eauto.
   econstructor; eauto.
 Qed.
 

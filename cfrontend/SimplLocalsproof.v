@@ -186,6 +186,10 @@ Qed.
 (** Properties of values obtained by casting to a given type. *)
 
 Inductive val_casted: val -> type -> Prop :=
+  | val_casted_vundef: forall si attr,
+      val_casted Vundef (Tint I8 si attr)
+  | val_casted_ptr_seg: forall b ofs i si attr,
+      val_casted (Vptrseg b ofs i) (Tint I8 si attr)
   | val_casted_int: forall sz si attr n,
       cast_int_int sz si n = n ->
       val_casted (Vint n) (Tint sz si attr)
@@ -235,36 +239,35 @@ Proof.
 (* void *)
   constructor.
 (* int *)
-  destruct i; destruct ty; simpl in H; try discriminate; destruct v; inv H.
-  constructor. apply (cast_int_int_idem I8 s).
-  constructor. apply (cast_int_int_idem I8 s).
-  destruct (cast_float_int s f0); inv H1.   constructor. apply (cast_int_int_idem I8 s). 
-  constructor. apply (cast_int_int_idem I16 s).
-  constructor. apply (cast_int_int_idem I16 s).
-  destruct (cast_float_int s f0); inv H1.   constructor. apply (cast_int_int_idem I16 s). 
-  constructor. auto.
-  constructor.
-  constructor. auto. 
+  destruct i; destruct ty; try destruct i; try discriminate;
+    destruct v; inv H; try constructor; auto.
+  destruct (cast_char_char s i) eqn:?; inv H1.
+   unfold cast_char_char in *. destruct (Int.eq_dec _ _); inv Heqo. constructor; auto.
+   constructor.
+  apply (cast_int_int_idem I8 _).
+  apply (cast_int_int_idem I8 _).
+  apply (cast_int_int_idem I8 _).
+  apply (cast_int_int_idem I8 _).
+  destruct (cast_float_int s f0); inv H1. constructor. apply (cast_int_int_idem I8 s).
+  apply (cast_int_int_idem I16 s).
+  apply (cast_int_int_idem I16 s).
+  apply (cast_int_int_idem I16 s).
+  apply (cast_int_int_idem I16 s).
+  apply (cast_int_int_idem I16 s).
+  destruct (cast_float_int s f0); inv H1. constructor. apply (cast_int_int_idem I16 s). 
   destruct (cast_float_int s f0); inv H1. constructor. auto.
-  constructor. auto.
-  constructor.
-  constructor; auto.
-  constructor.
-  constructor; auto.
-  constructor; auto.
-  constructor; auto.
-  constructor; auto.
-  constructor. simpl. destruct (Int.eq i0 Int.zero); auto.
-  constructor. simpl. destruct (Int64.eq i Int64.zero); auto.
-  constructor. simpl. destruct (Float.cmp Ceq f0 Float.zero); auto.
-  constructor. simpl. destruct (Int.eq i Int.zero); auto.
-  constructor; auto.
-  constructor. simpl. destruct (Int.eq i Int.zero); auto.
-  constructor; auto.
-  constructor. simpl. destruct (Int.eq i Int.zero); auto.
-  constructor; auto.
-  constructor. simpl. destruct (Int.eq i0 Int.zero); auto.
-  constructor; auto.
+  simpl. destruct (Int.eq i Int.zero); auto.
+  simpl. destruct (Int.eq i Int.zero); auto.
+  simpl. destruct (Int.eq i Int.zero); auto.
+  simpl. destruct (Int.eq i Int.zero); auto.
+  simpl. destruct (Int64.eq i Int64.zero); auto.
+  simpl. destruct (Float.cmp Ceq f0 Float.zero); auto.
+  simpl. destruct (Int.eq i Int.zero); auto.
+  simpl. destruct (Int.eq i Int.zero); auto.
+  simpl. destruct (Int.eq i Int.zero); auto.
+  simpl. destruct (Int.eq i0 Int.zero); auto.
+  simpl. destruct (Int.eq i0 Int.zero); auto.
+  simpl. destruct (Int.eq i Int.zero); auto.
 (* long *)
   destruct ty; try discriminate.
   destruct v; inv H. constructor.
@@ -304,6 +307,8 @@ Lemma val_casted_load_result:
   Val.load_result chunk v = v.
 Proof.
   intros. inversion H; clear H; subst v ty; simpl in H0.
+  now destruct si; inv H0.
+  now destruct si; inv H0.
   destruct sz.
   destruct si; inversion H0; clear H0; subst chunk; simpl in *; congruence.
   destruct si; inversion H0; clear H0; subst chunk; simpl in *; congruence.
@@ -326,19 +331,11 @@ Lemma cast_val_casted:
   forall v ty, val_casted v ty -> sem_cast v ty ty = Some v.
 Proof.
   intros. inversion H; clear H; subst v ty; unfold sem_cast; simpl; auto.
-  destruct sz; congruence.
+  destruct sz; try congruence.
+  unfold cast_char_char. destruct (Int.eq_dec _ _); congruence.
   congruence.
   unfold proj_sumbool; repeat rewrite dec_eq_true; auto.
   unfold proj_sumbool; repeat rewrite dec_eq_true; auto.
-Qed.
-
-Lemma val_casted_inject:
-  forall f v v' ty,
-  val_inject f v v' -> val_casted v ty -> val_casted v' ty.
-Proof.
-  intros. inv H; auto.
-  inv H0; constructor.
-  inv H0; constructor.
 Qed.
 
 Inductive val_casted_list: list val -> typelist -> Prop :=
@@ -1101,6 +1098,7 @@ Theorem store_params_correct:
   list_norepet (var_names params) ->
   list_forall2 val_casted args (map snd params) ->
   val_list_inject j args targs ->
+  list_forall2 val_casted targs (map snd params) ->
   match_envs j cenv e le m lo hi te tle1 tlo thi ->
   Mem.inject j m tm ->
   (forall id, ~In id (var_names params) -> tle2!id = tle1!id) ->
@@ -1113,17 +1111,17 @@ Theorem store_params_correct:
   /\ match_envs j cenv e le m' lo hi te tle tlo thi
   /\ Mem.nextblock tm' = Mem.nextblock tm.
 Proof.
-  induction 1; simpl; intros until targs; intros NOREPET CASTED VINJ MENV MINJ TLE LE.
+  induction 1; simpl; intros until targs; intros NOREPET CASTED VINJ tCASTED MENV MINJ TLE LE.
   (* base case *)
   inv VINJ. exists tle2; exists tm; split. apply star_refl. split. auto. split. auto.
   split. apply match_envs_temps_exten with tle1; auto. auto.
   (* inductive case *)
-  inv NOREPET. inv CASTED. inv VINJ.
+  inv NOREPET. inv CASTED. inv VINJ. inv tCASTED.
   exploit me_vars; eauto. instantiate (1 := id); intros MV.
   destruct (VSet.mem id cenv) eqn:?.
   (* lifted to temp *)
   eapply IHbind_parameters with (tle1 := PTree.set id v' tle1); eauto.
-  eapply match_envs_assign_lifted; eauto. 
+  eapply match_envs_assign_lifted with (v:=v1); eauto.
   inv MV; try congruence. rewrite ENV in H; inv H.
   inv H0; try congruence.
   unfold Mem.storev in H2. eapply Mem.store_unmapped_inject; eauto.
@@ -1133,7 +1131,7 @@ Proof.
   inv MV; try congruence. rewrite ENV in H; inv H.
   exploit assign_loc_inject; eauto. 
   intros [tm1 [A [B C]]].
-  exploit IHbind_parameters. eauto. eauto. eauto.
+  exploit IHbind_parameters. eauto. eauto. eauto. eauto.
   instantiate (1 := PTree.set id v' tle1).
   apply match_envs_change_temp.  
   eapply match_envs_invariant; eauto.
@@ -1143,17 +1141,16 @@ Proof.
   intros. repeat rewrite PTree.gsspec. destruct (peq id0 id). auto.
   apply TLE. intuition.
   intros. apply LE. auto.
-  instantiate (1 := s). 
-  intros [tle [tm' [U [V [X [Y Z]]]]]].
+  instantiate (1 := s).
+  clear IHbind_parameters. intros [tle [tm' [U [V [X [Y Z]]]]]].
   exists tle; exists tm'; split.
   eapply star_trans.
   eapply star_left. econstructor.
-  eapply star_left. econstructor. 
-    eapply eval_Evar_local. eauto. 
+  eapply star_left. econstructor.
+    eapply eval_Evar_local. eauto.
     eapply eval_Etempvar. erewrite bind_parameter_temps_inv; eauto.
     apply PTree.gss. 
-    simpl. instantiate (1 := v'). apply cast_val_casted.
-    eapply val_casted_inject with (v := v1); eauto.
+    simpl. instantiate (1 := v'). apply cast_val_casted. auto.
     simpl. eexact A. 
   apply star_one. constructor.
   reflexivity. reflexivity. 
@@ -1501,17 +1498,19 @@ Lemma eval_simpl_exprlist:
   val_casted_list vl tyl /\
   exists tvl,
      eval_exprlist tge te tle tm (simpl_exprlist cenv al) tyl tvl
-  /\ val_list_inject f vl tvl.
+  /\ val_list_inject f vl tvl
+  /\ val_casted_list tvl tyl.
 Proof.
   induction 1; simpl; intros.
-  split. constructor. econstructor; split. constructor. auto.
+  { repeat econstructor. }
   exploit eval_simpl_expr; eauto with compat. intros [tv1 [A B]].
   exploit sem_cast_inject; eauto. intros [tv2 [C D]].
-  exploit IHeval_exprlist; eauto with compat. intros [E [tvl [F G]]].
+  exploit IHeval_exprlist; eauto with compat. intros (E & tvl & F & G & E').
   split. constructor; auto. eapply cast_val_is_casted; eauto.  
   exists (tv2 :: tvl); split. econstructor; eauto.
   rewrite typeof_simpl_expr; auto.
   econstructor; eauto.
+  econstructor; eauto using cast_val_is_casted.
 Qed.
 
 End EVAL_EXPR.
@@ -1752,7 +1751,8 @@ Inductive match_states: state -> state -> Prop :=
         (MINJ: Mem.inject j m tm)
         (AINJ: val_list_inject j vargs tvargs)
         (FUNTY: type_of_fundef fd = Tfunction targs tres cconv)
-        (ANORM: val_casted_list vargs targs),
+        (ANORM: val_casted_list vargs targs)
+        (ANORM: val_casted_list tvargs targs),
       match_states (Callstate fd vargs k m)
                    (Callstate tfd tvargs tk tm)
   | match_return_state:
@@ -2022,7 +2022,7 @@ Proof.
 
 (* call *)
   exploit eval_simpl_expr; eauto with compat. intros [tvf [A B]].
-  exploit eval_simpl_exprlist; eauto with compat. intros [CASTED [tvargs [C D]]].
+  exploit eval_simpl_exprlist; eauto with compat. intros (CASTED & tvargs & C & D & tCASTED).
   exploit match_cont_find_funct; eauto. intros [tfd [P Q]].
   econstructor; split.
   apply plus_one. eapply step_call with (fd := tfd).
@@ -2033,7 +2033,7 @@ Proof.
   intros. econstructor; eauto.
 
 (* builtin *)
-  exploit eval_simpl_exprlist; eauto with compat. intros [CASTED [tvargs [C D]]].
+  exploit eval_simpl_exprlist; eauto with compat. intros (CASTED & tvargs & C & D & tCASTED).
   exploit external_call_mem_inject; eauto. apply match_globalenvs_preserves_globals; eauto with compat.
   intros [j' [tvres [tm' [P [Q [R [S [T [U V]]]]]]]]].
   econstructor; split.
@@ -2153,10 +2153,11 @@ Proof.
     intros. eapply cenv_for_gen_domain. rewrite VSF.mem_iff. eexact H3.
   intros [j' [te [tm0 [A [B [C [D [E F]]]]]]]].
   exploit store_params_correct.
-    eauto. 
+    eauto.
     eapply list_norepet_append_left; eauto.
     apply val_casted_list_params. unfold type_of_function in FUNTY. congruence.
-    apply val_list_inject_incr with j'; eauto. 
+    apply val_list_inject_incr with j'; eauto.
+    apply val_casted_list_params. unfold type_of_function in FUNTY. congruence.
     eexact B. eexact C.
     intros. apply (create_undef_temps_lifted id f). auto.
     intros. destruct (create_undef_temps (fn_temps f))!id as [v|] eqn:?; auto.
@@ -2229,6 +2230,7 @@ Proof.
   eapply Genv.find_var_info_not_fresh; eauto.
   xomega. xomega.
   eapply Genv.initmem_inject; eauto.
+  constructor.
   constructor.
 Qed.
 

@@ -47,14 +47,17 @@ Definition iagree (p q mask: int) : Prop :=
   forall i, 0 <= i < Int.zwordsize -> Int.testbit mask i = true ->
             Int.testbit p i = Int.testbit q i.
 
-Fixpoint vagree (v w: val) (x: nval) {struct x}: Prop :=
+Definition vagree (v w: val) (x: nval) : Prop :=
   match x with
   | Nothing => True
   | I m =>
       match v, w with
       | Vint p, Vint q => iagree p q m
       | Vint p, _ => False
-      | _, _ => True                                 
+      | Vptrseg b ofs i, Vptrseg b' ofs' i' => b = b' /\ ofs = ofs' /\ i = i'
+      | Vptrseg _ _ _, Vint _ => m = Int.zero
+      | Vptrseg _ _ _, _ => False
+      | _, _ => True
       end
   | Fsingle =>
       match v, w with
@@ -137,7 +140,10 @@ Lemma nge_agree:
 Proof.
   induction 1; simpl; auto.
 - destruct v; auto with na.
-- destruct v, w; intuition. red; auto.
+- destruct v, w; intuition; [red; auto| subst].
+  destruct (Int.bits_size_1 m2) as [|[??]]; auto. apply H in H0.
+  { now rewrite Int.bits_zero in H0. }
+  pose proof (Int.size_range m2). omega.
 Qed.
 
 Definition nlub (x y: nval) : nval :=
@@ -385,10 +391,12 @@ Qed.
 Ltac InvAgree :=
   simpl vagree in *;
   repeat (
-  auto || exact Logic.I ||
+  auto || exact Logic.I || discriminate ||
   match goal with
   | [ H: False |- _ ] => contradiction
-  | [ H: match ?v with Vundef => _ | Vint _ => _ | Vlong _ => _ | Vfloat _ => _ | Vptr _ _ => _ end |- _ ] => destruct v
+  | [ H : _ /\ _ |- _ ] => destruct H
+  | [ H : ?x = _ |- _ ] => subst x
+  | [ H: match ?v with Vundef => _ | _ => _ end |- _ ] => destruct v
   end).
 
 (** And immediate, or immediate *)
@@ -721,6 +729,38 @@ Proof.
   unfold j. destruct (zlt i1 n); omega.
 Qed.
 
+Lemma sign_ext_8_alt_sound:
+  forall v w x,
+  vagree v w (sign_ext 8 x) ->
+  vagree (Val.sign_ext_8_alt v) (Val.sign_ext_8_alt w) x.
+Proof.
+  unfold sign_ext; intros. destruct x; simpl in *.
+- auto.
+- unfold Val.sign_ext_8_alt; InvAgree.
+{ red; intros. autorewrite with ints; try omega.
+  set (j := if zlt i1 8 then i1 else 8 - 1).
+  assert (0 <= j < Int.zwordsize). 
+  { unfold j; destruct (zlt i1 8); omega. }
+  apply H; auto. 
+  autorewrite with ints; try omega. apply orb_true_intro. 
+  unfold j; destruct (zlt i1 8). 
+  left. rewrite zlt_true; auto. 
+  right. rewrite Int.unsigned_repr. rewrite zlt_false by omega. 
+  replace (8 - 1 - (8 - 1)) with 0 by omega. reflexivity.
+  generalize Int.wordsize_max_unsigned; omega. }
+  apply (eq_same_bits 7) in H.
+  now rewrite Int.bits_or, orb_true_r in H by (compute; intuition congruence).
+- unfold Val.sign_ext; destruct v; destruct w; auto.
+- unfold Val.sign_ext_8_alt; InvAgree; auto. apply Val.lessdef_same. f_equal. 
+  Int.bit_solve; try omega.
+  set (j := if zlt i1 8 then i1 else 8 - 1).
+  assert (0 <= j < Int.zwordsize). 
+  { unfold j; destruct (zlt i1 8); omega. }
+  apply H; auto. rewrite Int.bits_zero_ext; try omega. 
+  rewrite zlt_true. apply Int.bits_mone; auto. 
+  unfold j. destruct (zlt i1 8); omega.
+Qed.
+
 Definition singleoffloat (x: nval) :=
   match x with
   | Nothing | I _ => Nothing
@@ -760,7 +800,7 @@ Proof.
                      (encode_val chunk w)).
   {
      rewrite <- (encode_val_length chunk w). 
-     apply repeat_Undef_inject_any.
+     now apply repeat_Undef_inject_any.
   }
   assert (SAME: forall vl1 vl2,
                 vl1 = vl2 ->
@@ -771,17 +811,17 @@ Proof.
   }
 
   intros. unfold store_argument in H; destruct chunk.
-- InvAgree. apply SAME. simpl; f_equal. apply encode_int_8_mod. 
+- InvAgree. apply SAME. unfold encode_val. do 2 f_equal. apply bytes_of_int_8_mod.
   change 8 with (Int.size (Int.repr 255)). apply iagree_eqmod; auto.
-- InvAgree. apply SAME. simpl; f_equal. apply encode_int_8_mod. 
+- InvAgree. apply SAME. unfold encode_val. do 2 f_equal. apply bytes_of_int_8_mod. 
   change 8 with (Int.size (Int.repr 255)). apply iagree_eqmod; auto.
-- InvAgree. apply SAME. simpl; f_equal. apply encode_int_16_mod. 
+- InvAgree. apply SAME. unfold encode_val. do 2 f_equal. apply bytes_of_int_16_mod.
   change 16 with (Int.size (Int.repr 65535)). apply iagree_eqmod; auto.
-- InvAgree. apply SAME. simpl; f_equal. apply encode_int_16_mod. 
+- InvAgree. apply SAME. unfold encode_val. do 2 f_equal. apply bytes_of_int_16_mod.
   change 16 with (Int.size (Int.repr 65535)). apply iagree_eqmod; auto.
 - apply encode_val_inject. rewrite val_inject_id; auto.
 - apply encode_val_inject. rewrite val_inject_id; auto.
-- InvAgree. apply SAME. simpl.
+- InvAgree. apply SAME. unfold encode_val.
   rewrite <- (Float.bits_of_singleoffloat f).
   rewrite <- (Float.bits_of_singleoffloat f0).
   congruence. 
@@ -889,7 +929,7 @@ Lemma default_needs_of_condition_sound:
   eval_condition cond args2 m2 = Some b.
 Proof.
   intros. apply eval_condition_inj with (f := inject_id) (m1 := m1) (vl1 := args1); auto.
-  apply val_list_inject_lessdef. apply lessdef_vagree_list. auto.
+  apply val_list_inject_id. apply lessdef_vagree_list. auto.
 Qed.
 
 Lemma default_needs_of_operation_sound:
@@ -912,15 +952,14 @@ Proof.
     inv H0; constructor; auto with na. inv H8; constructor; auto with na.
   }
   exploit (@eval_operation_inj _ _ ge inject_id).
-  intros. apply val_inject_lessdef. auto.
+  intros. apply val_inject_id. auto.
   eassumption. auto. auto. auto.
-  apply val_inject_lessdef. instantiate (1 := Vptr sp Int.zero). instantiate (1 := Vptr sp Int.zero). auto.
-  apply val_list_inject_lessdef. eauto.
+  apply val_inject_id. instantiate (1 := Vptr sp Int.zero). instantiate (1 := Vptr sp Int.zero). auto.
+  apply val_list_inject_id. eauto.
   eauto. 
   intros (v2 & A & B). exists v2; split; auto.
-  apply vagree_lessdef. apply val_inject_lessdef. auto. 
+  apply vagree_lessdef. apply val_inject_id. auto. 
 Qed.
-
 End DEFAULT.
 
 (** ** Detecting operations that are redundant and can be turned into a move *)
@@ -1032,6 +1071,23 @@ Proof.
   destruct (zlt i1 n). apply H0; auto.
   rewrite Int.bits_or; auto. rewrite H3; auto. 
   rewrite Int.bits_zero_ext in H3 by omega. rewrite zlt_false in H3 by auto. discriminate.
+Qed.
+Lemma sign_ext_8_alt_redundant_sound:
+  forall v w x,
+  sign_ext_redundant 8 x = true ->
+  vagree v w (sign_ext 8 x) ->
+  vagree (Val.sign_ext_8_alt v) w x.
+Proof.
+  unfold sign_ext_redundant; intros. destruct x; try discriminate.
+- auto.
+- simpl in *; InvAgree; simpl.
+{ InvBooleans. rewrite <- H. 
+  red; intros; autorewrite with ints; try omega. 
+  destruct (zlt i1 8). apply H0; auto.
+  rewrite Int.bits_or; auto. rewrite H2; auto. 
+  rewrite Int.bits_zero_ext in H2 by omega. rewrite zlt_false in H2 by auto. discriminate. }
+  apply (eq_same_bits 7) in H0.
+  now rewrite Int.bits_or, orb_true_r in H0 by (compute; intuition congruence).
 Qed.
 
 Definition singleoffloat_redundant (x: nval) :=
@@ -1525,4 +1581,3 @@ Module NA <: SEMILATTICE.
   Qed.
 
 End NA.
-

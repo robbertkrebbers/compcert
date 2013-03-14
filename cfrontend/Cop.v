@@ -73,6 +73,7 @@ Inductive incr_or_decr : Type := Incr | Decr.
 
 Inductive classify_cast_cases : Type :=
   | cast_case_neutral                   (**r int|pointer -> int32|pointer *)
+  | cast_case_c2c (si2:signedness)                 (**r char -> char *)
   | cast_case_i2i (sz2:intsize) (si2:signedness)   (**r int -> int *)
   | cast_case_f2f (sz2:floatsize)                  (**r float -> float *)
   | cast_case_i2f (si1:signedness) (sz2:floatsize) (**r int -> float *)
@@ -93,6 +94,7 @@ Inductive classify_cast_cases : Type :=
 Definition classify_cast (tfrom tto: type) : classify_cast_cases :=
   match tto, tfrom with
   | Tint I32 si2 _, (Tint _ _ _ | Tpointer _ _ | Tcomp_ptr _ _ | Tarray _ _ _ | Tfunction _ _ _) => cast_case_neutral
+  | Tint I8 si2 _, Tint I8 _ _ => cast_case_c2c si2
   | Tint IBool _ _, Tfloat _ _ => cast_case_f2bool
   | Tint IBool _ _, (Tpointer _ _ | Tcomp_ptr _ _ | Tarray _ _ _ | Tfunction _ _ _) => cast_case_p2bool
   | Tint sz2 si2 _, Tint sz1 si1 _ => cast_case_i2i sz2 si2
@@ -168,12 +170,25 @@ Definition cast_float_long (si : signedness) (f: float) : option int64 :=
   | Unsigned => Float.longuoffloat f
   end.
 
+Definition cast_char_char (si : signedness) (i : int) : option int :=
+  if Int.eq_dec (cast_int_int I8 si i) i then Some i else None.
+
 Definition sem_cast (v: val) (t1 t2: type) : option val :=
   match classify_cast t1 t2 with
   | cast_case_neutral =>
       match v with
       | Vint _ | Vptr _ _ => Some v
       | _ => None
+      end
+  | cast_case_c2c si2 =>
+      match v with
+      | Vint i =>
+          match cast_char_char si2 i with
+          | Some i => Some (Vint i)
+          | None => Some Vundef
+          end
+      | Vptrseg b ofs i => Some (Vptrseg b ofs i)
+      | _ => Some Vundef
       end
   | cast_case_i2i sz2 si2 =>
       match v with
@@ -964,10 +979,15 @@ Proof.
   unfold sem_cast; intros; destruct (classify_cast ty1 ty);
   inv H0; inv H; TrivialInject.
 - econstructor; eauto. 
+- destruct (cast_char_char _ _); inv H1; TrivialInject.
+- econstructor; eauto.
+- destruct tv1; TrivialInject.
+  destruct (cast_char_char _ _); TrivialInject.
 - destruct (cast_float_int si2 f0); inv H1; TrivialInject.
 - destruct (cast_float_long si2 f0); inv H1; TrivialInject.
 - destruct (ident_eq id1 id2 && fieldlist_eq fld1 fld2); inv H2; TrivialInject. econstructor; eauto.
 - destruct (ident_eq id1 id2 && fieldlist_eq fld1 fld2); inv H2; TrivialInject. econstructor; eauto.
+- econstructor; eauto.
 - econstructor; eauto.
 Qed.
 
@@ -991,6 +1011,7 @@ Qed.
 Definition optval_self_injects (ov: option val) : Prop :=
   match ov with
   | Some (Vptr b ofs) => False
+  | Some (Vptrseg _ _ _) => False
   | _ => True
   end.
 
@@ -1168,5 +1189,46 @@ Proof.
   intros; eapply Mem.different_pointers_inject; eauto.
 Qed.
 
-
-
+Lemma sem_cast_lessdef:
+  forall v1 ty1 ty v tv1,
+  sem_cast v1 ty1 ty = Some v ->
+  Val.lessdef v1 tv1 ->
+  exists tv, sem_cast tv1 ty1 ty = Some tv /\ Val.lessdef v tv.
+Proof.
+  intros until 0. setoid_rewrite <-val_inject_id. apply sem_cast_inject.
+Qed.
+Lemma sem_unary_operation_lessdef:
+  forall op v1 ty v tv1,
+  sem_unary_operation op v1 ty = Some v ->
+  Val.lessdef v1 tv1 ->
+  exists tv, sem_unary_operation op tv1 ty = Some tv /\ Val.lessdef v tv.
+Proof.
+  intros until 0. setoid_rewrite <-val_inject_id. apply sem_unary_operation_inject.
+Qed.
+Lemma sem_binary_operation_lessdef:
+  forall m m' op v1 ty1 v2 ty2 v tv1 tv2,
+  sem_binary_operation op v1 ty1 v2 ty2 m = Some v ->
+  Val.lessdef v1 tv1 -> Val.lessdef v2 tv2 ->
+  Mem.extends m m' ->
+  exists tv, sem_binary_operation op tv1 ty1 tv2 ty2 m' = Some tv /\ Val.lessdef v tv.
+Proof.
+  intros until 0. setoid_rewrite <-val_inject_id. intros.
+  eapply sem_binary_operation_inj; eauto.
+  * injection 1; intros; subst. rewrite Int.add_zero.
+    eauto using Mem.valid_pointer_extends.
+  * injection 1; intros; subst. rewrite Int.add_zero.
+    eauto using Mem.weak_valid_pointer_extends.
+  * injection 1; intros; subst.
+    rewrite Int.unsigned_repr, Z.add_0_r by (compute; intuition congruence).
+    auto using Int.unsigned_range_2.
+  * injection 4; injection 3; intros; subst. auto.
+Qed.
+Lemma bool_val_lessdef:
+  forall v ty b tv,
+  bool_val v ty = Some b ->
+  Val.lessdef v tv ->
+  bool_val tv ty = Some b.
+Proof.
+  unfold bool_val; intros. 
+  destruct (classify_bool ty); inv H0; congruence.
+Qed.

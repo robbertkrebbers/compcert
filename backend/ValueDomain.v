@@ -545,19 +545,23 @@ Inductive vmatch : val -> aval -> Prop :=
   | vmatch_ifptr_i: forall i p, vmatch (Vint i) (Ifptr p)
   | vmatch_ifptr_l: forall i p, vmatch (Vlong i) (Ifptr p)
   | vmatch_ifptr_f: forall f p, vmatch (Vfloat f) (Ifptr p)
+  | vmatch_ifptr_ps: forall b ofs i p, pmatch b ofs p -> vmatch (Vptrseg b ofs i) (Ifptr p)
   | vmatch_ifptr_p: forall b ofs p, pmatch b ofs p -> vmatch (Vptr b ofs) (Ifptr p).
 
 Lemma vmatch_ifptr:
   forall v p,
   (forall b ofs, v = Vptr b ofs -> pmatch b ofs p) ->
+  (forall b ofs i, v = Vptrseg b ofs i -> pmatch b ofs p) ->
   vmatch v (Ifptr p).
 Proof.
-  intros. destruct v; constructor; auto. 
+  intros. destruct v; constructor; eauto.
 Qed.
 
 Lemma vmatch_top: forall v x, vmatch v x -> vmatch v Vtop.
 Proof.
-  intros. apply vmatch_ifptr. intros. subst v. inv H; eapply pmatch_top'; eauto.
+  intros. apply vmatch_ifptr.
+  * intros. subst v. inv H; eapply pmatch_top'; eauto.
+  * intros. subst v. inv H; eapply pmatch_top'; eauto.
 Qed.
 
 Lemma vmatch_itop: forall i, vmatch (Vint i) itop.
@@ -994,7 +998,9 @@ Qed.
 Lemma vmatch_vplub_r:
   forall v x p, vmatch v (Ifptr p) -> vmatch v (Ifptr (vplub x p)).
 Proof.
-  intros. apply vmatch_ifptr; intros; subst v. inv H. apply pmatch_vplub; auto. 
+  intros. apply vmatch_ifptr; intros; subst v.
+  * inv H. apply pmatch_vplub; auto.
+  * inv H. apply pmatch_vplub; auto.
 Qed.
 
 (** Inclusion *)
@@ -1662,10 +1668,32 @@ Proof.
   {
     intros. apply vmatch_sgn. apply is_sign_ext_sgn; auto with va.
   }
-  intros. inv H0; simpl; auto with va. 
+  intros. inv H0; simpl; try (destruct (zeq _ _)); auto with va. 
 - destruct (zlt n nbits); eauto with va.
   constructor; auto. eapply is_sign_ext_uns; eauto with va. 
 - destruct (zlt n nbits); auto with va.
+- apply vmatch_sgn. apply is_sign_ext_sgn; auto with va.
+  apply Z.min_case; auto with va.
+Qed.
+
+Definition sign_ext_8_alt (v: aval) :=
+  match v with
+  | I i => I (Int.sign_ext 8 i)
+  | Uns n => if zlt n 8 then Uns n else sgn 8
+  | Sgn n => sgn (Z.min n 8)
+  | Ifptr p => Ifptr p
+  | _ => sgn 8
+  end.
+
+Lemma sign_ext_8_alt_sound:
+  forall v x, vmatch v x -> vmatch (Val.sign_ext_8_alt v) (sign_ext_8_alt x).
+Proof.
+  assert (DFL: forall i, vmatch (Vint (Int.sign_ext 8 i)) (sgn 8)).
+  { intros. apply vmatch_sgn. apply is_sign_ext_sgn; auto with va. }
+  intros. inv H; simpl; try (destruct (zeq _ _)); auto with va. 
+- destruct (zlt n 8); eauto with va.
+  constructor; auto. eapply is_sign_ext_uns; eauto with va. 
+- destruct (zlt n 8); auto with va.
 - apply vmatch_sgn. apply is_sign_ext_sgn; auto with va.
   apply Z.min_case; auto with va.
 Qed.
@@ -1908,16 +1936,17 @@ Proof.
 Qed.
 
 (** Normalization at load time *)
-
 Definition vnormalize (chunk: memory_chunk) (v: aval) :=
   match chunk, v with
   | _, Vbot => Vbot
   | Mint8signed, I i => I (Int.sign_ext 8 i)
   | Mint8signed, Uns n => if zlt n 8 then Uns n else Sgn 8
   | Mint8signed, Sgn n => Sgn (Z.min n 8)
+  | Mint8signed, Ifptr p => if eq_aptr p Pbot then Sgn 8 else Ifptr p
   | Mint8signed, _ => Sgn 8
   | Mint8unsigned, I i => I (Int.zero_ext 8 i)
   | Mint8unsigned, Uns n => Uns (Z.min n 8)
+  | Mint8unsigned, Ifptr p => if eq_aptr p Pbot then Uns 8 else Ifptr p
   | Mint8unsigned, _ => Uns 8
   | Mint16signed, I i => I (Int.sign_ext 16 i)
   | Mint16signed, Uns n => if zlt n 16 then Uns n else Sgn 16
@@ -1937,7 +1966,8 @@ Definition vnormalize (chunk: memory_chunk) (v: aval) :=
 Lemma vnormalize_sound:
   forall chunk v x, vmatch v x -> vmatch (Val.load_result chunk v) (vnormalize chunk x).
 Proof.
-  unfold Val.load_result, vnormalize; induction 1; destruct chunk; auto with va.
+  unfold Val.load_result, vnormalize; destruct 1; destruct chunk;
+    try solve [constructor]; auto with va.
 - destruct (zlt n 8); constructor; auto with va.
   apply is_sign_ext_uns; auto.
   apply is_sign_ext_sgn; auto with va.
@@ -1949,15 +1979,25 @@ Proof.
 - destruct (zlt n 8); auto with va.
 - destruct (zlt n 16); auto with va.
 - constructor. xomega. apply is_sign_ext_sgn; auto with va. apply Z.min_case; auto with va.
-- constructor. omega. apply is_zero_ext_uns; auto with va.
+- constructor. xomega. apply is_zero_ext_uns; auto with va.
 - constructor. xomega. apply is_sign_ext_sgn; auto with va. apply Z.min_case; auto with va.
-- constructor. omega. apply is_zero_ext_uns; auto with va.
+- constructor. xomega. apply is_zero_ext_uns; auto with va.
 - constructor. apply Float.singleoffloat_is_single.
+- destruct (eq_aptr p Pbot); constructor.
+- destruct (eq_aptr p Pbot); constructor.
+- destruct (eq_aptr p Pbot); constructor. omega. apply is_sign_ext_sgn; auto with va.
+- destruct (eq_aptr p Pbot); constructor. omega. apply is_zero_ext_uns; auto with va.
 - constructor. omega. apply is_sign_ext_sgn; auto with va.
 - constructor. omega. apply is_zero_ext_uns; auto with va.
-- constructor. omega. apply is_sign_ext_sgn; auto with va.
-- constructor. omega. apply is_zero_ext_uns; auto with va.
+- destruct (eq_aptr p Pbot); constructor.
+- destruct (eq_aptr p Pbot); constructor.
+- destruct (eq_aptr p Pbot); constructor.
+- destruct (eq_aptr p Pbot); constructor.
 - constructor. apply Float.singleoffloat_is_single.
+- destruct H; repeat constructor; eauto using pmatch_glob.
+- destruct H; repeat constructor; eauto using pmatch_glob.
+- destruct (eq_aptr p Pbot); constructor.
+- destruct (eq_aptr p Pbot); constructor.
 Qed.
 
 Lemma vnormalize_cast:
@@ -1969,9 +2009,15 @@ Proof.
   intros. exploit Mem.load_cast; eauto. exploit Mem.load_type; eauto. 
   destruct chunk; simpl; intros.
 - (* int8signed *)
-  rewrite H2. destruct v; simpl; constructor. omega. apply is_sign_ext_sgn; auto with va. 
+  destruct (ptrseg_dec v).
+  { inv i; inv H0. destruct H4; repeat constructor; eauto using pmatch_glob. }
+  rewrite H2 by easy. destruct v, (eq_aptr p Pbot); simpl; constructor. omega.
+  apply is_sign_ext_sgn; auto with va.
 - (* int8unsigned *)
-  rewrite H2. destruct v; simpl; constructor. omega. apply is_zero_ext_uns; auto with va. 
+  destruct (ptrseg_dec v).
+  { inv i; inv H0. destruct H4; repeat constructor; eauto using pmatch_glob. }
+  rewrite H2 by easy. destruct v, (eq_aptr p Pbot); simpl; constructor. omega.
+  apply is_zero_ext_uns; auto with va.
 - (* int16signed *)
   rewrite H2. destruct v; simpl; constructor. omega. apply is_sign_ext_sgn; auto with va. 
 - (* int16unsigned *)
@@ -1990,7 +2036,7 @@ Lemma vnormalize_monotone:
   forall chunk x y,
   vge x y -> vge (vnormalize chunk x) (vnormalize chunk y).
 Proof.
-  induction 1; destruct chunk; simpl; auto with va.
+  destruct 1, chunk; simpl; auto with va.
 - destruct (zlt n 8); constructor; auto with va.
   apply is_sign_ext_uns; auto with va.
   apply is_sign_ext_sgn; auto with va.
@@ -2014,13 +2060,26 @@ Proof.
 - destruct (zlt n2 8); constructor; auto with va.
 - destruct (zlt n2 16); constructor; auto with va.
 - constructor. apply Float.singleoffloat_is_single.
+- destruct (eq_aptr p Pbot); auto with va.
+- destruct (eq_aptr p Pbot); auto with va.
+- destruct H; try destruct p; simpl; auto with va.
+- destruct H; try destruct p; simpl; auto with va.
+- destruct (eq_aptr p Pbot); constructor; auto with va. apply is_sign_ext_sgn; auto with va.
+- destruct (eq_aptr p Pbot); constructor; auto with va. apply is_zero_ext_uns; auto with va.
 - constructor; auto with va. apply is_sign_ext_sgn; auto with va.
 - constructor; auto with va. apply is_zero_ext_uns; auto with va.
-- constructor; auto with va. apply is_sign_ext_sgn; auto with va.
-- constructor; auto with va. apply is_zero_ext_uns; auto with va.
+- destruct (eq_aptr p Pbot); auto with va.
+- destruct (eq_aptr p Pbot); auto with va.
+- destruct (eq_aptr p Pbot); auto with va.
+- destruct (eq_aptr p Pbot); auto with va.
 - constructor. apply Float.singleoffloat_is_single.
-- destruct (zlt n 8); constructor; auto with va.
-- destruct (zlt n 16); constructor; auto with va.
+- destruct (zlt n 8), (eq_aptr p Pbot); auto with va.
+- destruct (eq_aptr p Pbot); auto with va.
+- destruct (zlt n 16); auto with va.
+- destruct (eq_aptr p Pbot); auto with va.
+- destruct (eq_aptr p Pbot); auto with va.
+- destruct (eq_aptr p Pbot); auto with va.
+- destruct (eq_aptr p Pbot); auto with va.
 Qed.
 
 (** Abstracting memory blocks *)
@@ -2268,10 +2327,13 @@ Lemma store_provenance:
   Mem.store chunk m b ofs v = Some m' ->
   Mem.loadbytes m' b' ofs' 1 = Some (Pointer b'' ofs'' i :: nil) ->
   v = Vptr b'' ofs'' /\ chunk = Mint32
+  \/ v = Vptrseg b'' ofs'' i /\ chunk = Mint8signed
+  \/ v = Vptrseg b'' ofs'' i /\ chunk = Mint8unsigned
+  \/ v = Vptrseg b'' ofs'' i /\ chunk = Mint32
   \/ Mem.loadbytes m b' ofs' 1 = Some (Pointer b'' ofs'' i :: nil).
 Proof.
   intros. exploit storebytes_provenance; eauto. eapply Mem.store_storebytes; eauto. 
-  intros [A|A]; auto. left.
+  intros [A|A]; auto. 
   assert (IN_ENC_BYTES: forall bl, ~In (Pointer b'' ofs'' i) (inj_bytes bl)).
   {
     induction bl; simpl. tauto. red; intros; elim IHbl. destruct H1. congruence. auto. 
@@ -2280,10 +2342,11 @@ Proof.
   {
     intros; red; intros. exploit in_list_repeat; eauto. congruence.
   }
-  unfold encode_val in A; destruct chunk, v;
+  unfold encode_val in A; rewrite in_rev_if_be in A; destruct chunk, v;
   try (eelim IN_ENC_BYTES; eassumption);
-  try (eelim IN_REP_UNDEF; eassumption).
-  simpl in A. split; auto. intuition congruence.
+  try (eelim IN_ENC_PTR_SEG; eassumption);
+  try (eelim IN_REP_UNDEF; eassumption); eauto;
+  simpl in A; intuition congruence.
 Qed.
 
 Lemma smatch_store:
@@ -2295,19 +2358,28 @@ Lemma smatch_store:
 Proof.
   intros. destruct H0 as [A B]. split.
 - intros chunk' ofs' v' LOAD. destruct v'; auto with va.
-  exploit Mem.load_pointer_store; eauto. 
-  intros [(P & Q & R & S & T) | DISJ]. 
-+ subst. apply vmatch_vplub_l. auto.
-+ apply vmatch_vplub_r. apply A with (chunk := chunk') (ofs := ofs').
-  rewrite <- LOAD. symmetry. eapply Mem.load_store_other; eauto.
-- intros. exploit store_provenance; eauto. intros [[P Q] | P]. 
-+ subst. 
-  assert (V: vmatch (Vptr b'0 ofs') (Ifptr (vplub av p))).
++ exploit Mem.load_pointer_store; eauto.
+  intros [?[(?&?&?&?) | [(j&?&?&?&?) | DISJ]]]; subst.
+  * apply vmatch_vplub_l. auto.
+  * inv H1. apply vmatch_vplub_l. now constructor.
+  * apply vmatch_vplub_r. apply A with (chunk := Mint32) (ofs := ofs').
+    rewrite <- LOAD. symmetry. eapply Mem.load_store_other; eauto.
++ exploit Mem.load_pointer_segment_store; eauto.
+  intros [?[(?&?&?) | [(j&?&?&?) | DISJ]]]; subst.
+  * now inv H1; simpl; constructor; apply pmatch_lub_l.
+  * now inv H1; simpl; constructor; apply pmatch_lub_l.
+  * apply vmatch_vplub_r. apply A with (chunk := chunk') (ofs := ofs').
+    rewrite <- LOAD. symmetry. eapply Mem.load_store_other; eauto.
+- intros. exploit store_provenance; eauto. intros [[??]|[[??]|[[??]|[[??]|P]]]]; subst.
++ assert (V: vmatch (Vptr b'0 ofs') (Ifptr (vplub av p))).
   {
     apply vmatch_vplub_l. auto. 
   }
-  inv V; auto. 
-+ apply pmatch_vplub. eapply B; eauto.
+  inv V; auto.
++ inv H1; simpl. now apply pmatch_lub_l.
++ inv H1; simpl. now apply pmatch_lub_l.
++ inv H1; simpl. now apply pmatch_lub_l.
++ apply pmatch_vplub; eauto.
 Qed.
 
 Lemma smatch_storebytes:
@@ -2318,19 +2390,29 @@ Lemma smatch_storebytes:
   smatch m' b' (plub p' p).
 Proof.
   intros. destruct H0 as [A B]. split.
-- intros. apply vmatch_ifptr. intros bx ofsx EQ; subst v. 
+- intros. apply vmatch_ifptr.
++ intros bx ofsx ->.
   exploit Mem.load_loadbytes; eauto. intros (bytes' & P & Q).
-  exploit decode_val_pointer_inv; eauto. intros [U V]. 
-  subst chunk bytes'. 
-  exploit In_loadbytes; eauto.
-  instantiate (1 := Pointer bx ofsx 3%nat). simpl; auto.
+  exploit decode_val_pointer_inv; eauto. intros [??]; subst.
+  exploit (In_loadbytes m' b' (Pointer bx ofsx 3%nat)); eauto.
+  { apply in_rev_if_be; simpl; auto. }
   intros (ofs' & X & Y).
   exploit storebytes_provenance; eauto. intros [Z | Z].
-  apply pmatch_lub_l. eauto. 
-  apply pmatch_lub_r. eauto. 
+  * apply pmatch_lub_l. eauto.
+  * apply pmatch_lub_r. eauto.
++ intros bx ofsx i ->.
+  exploit Mem.load_loadbytes; eauto. intros (bytes' & P & Q).
+  exploit decode_val_pointer_seg_inv; eauto. intros [??]; subst.
+  exploit (In_loadbytes m' b' (Pointer bx ofsx i)); eauto.
+  { apply in_rev_if_be. destruct (size_chunk_nat_pos chunk) as [? ->].
+    simpl; auto. }
+  intros (ofs' & X & Y).
+  exploit storebytes_provenance; eauto. intros [Z | Z].
+  * apply pmatch_lub_l. eauto.
+  * apply pmatch_lub_r. eauto.
 - intros. exploit storebytes_provenance; eauto. intros [Z | Z].
-  apply pmatch_lub_l. eauto. 
-  apply pmatch_lub_r. eauto. 
+  * apply pmatch_lub_l. eauto. 
+  * apply pmatch_lub_r. eauto. 
 Qed.
 
 Definition bmatch (m: mem) (b: block) (ab: ablock) : Prop :=
@@ -3361,9 +3443,10 @@ Qed.
 Lemma vmatch_inj:
   forall bc v x, vmatch bc v x -> val_inject (inj_of_bc bc) v v.
 Proof.
-  induction 1; econstructor. 
+  induction 1; econstructor; eauto.
   eapply pmatch_inj; eauto. rewrite Int.add_zero; auto. 
   eapply pmatch_inj; eauto. rewrite Int.add_zero; auto. 
+  eapply pmatch_inj; eauto. rewrite Int.add_zero; auto.
 Qed.
 
 Lemma vmatch_list_inj:
@@ -3432,7 +3515,7 @@ Qed.
 Lemma vmatch_inj_top:
   forall bc v v', val_inject (inj_of_bc bc) v v' -> vmatch bc v Vtop.
 Proof.
-  intros. inv H; constructor. eapply pmatch_inj_top; eauto. 
+  intros. inv H; constructor. eapply pmatch_inj_top; eauto. eapply pmatch_inj_top; eauto.
 Qed.
 
 Lemma mmatch_inj_top:
@@ -3690,7 +3773,7 @@ Hint Resolve cnot_sound symbol_address_sound
        divs_sound divu_sound mods_sound modu_sound shrx_sound
        negf_sound absf_sound
        addf_sound subf_sound mulf_sound divf_sound
-       zero_ext_sound sign_ext_sound singleoffloat_sound
+       zero_ext_sound sign_ext_sound sign_ext_8_alt_sound singleoffloat_sound
        intoffloat_sound intuoffloat_sound floatofint_sound floatofintu_sound
        longofwords_sound loword_sound hiword_sound 
        cmpu_bool_sound cmp_bool_sound cmpf_bool_sound maskzero_sound : va.

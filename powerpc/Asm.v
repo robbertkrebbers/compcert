@@ -406,7 +406,9 @@ Axiom low_half_type:
   forall v, Val.has_type (low_half v) Tint.
 Axiom high_half_type: 
   forall v, Val.has_type (high_half v) Tint.
- 
+Axiom high_half_ptrseg:
+  forall v, ~is_ptrseg (high_half v).
+
 (** We also axiomatize the small data area.  For simplicity, we
   claim that small data symbols can be accessed by absolute 16-bit
   offsets, that is, relative to [GPR0].  In reality, the linker
@@ -633,7 +635,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
   | Peqv rd r1 r2 =>
       Next (nextinstr (rs#rd <- (Val.notint (Val.xor rs#r1 rs#r2)))) m
   | Pextsb rd r1 =>
-      Next (nextinstr (rs#rd <- (Val.sign_ext 8 rs#r1))) m
+      Next (nextinstr (rs#rd <- (Val.sign_ext_8_alt rs#r1))) m
   | Pextsh rd r1 =>
       Next (nextinstr (rs#rd <- (Val.sign_ext 16 rs#r1))) m
   | Pfreeframe sz ofs =>

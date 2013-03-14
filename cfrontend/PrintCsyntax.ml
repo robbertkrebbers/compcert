@@ -183,6 +183,10 @@ let print_pointer_hook
    : (formatter -> Values.block * Integers.Int.int -> unit) ref
    = ref (fun p (b, ofs) -> ())
 
+let print_pointer_seg_hook
+   : (formatter -> Values.block * Integers.Int.int * Datatypes.nat -> unit) ref
+   = ref (fun p (b, ofs, i) -> ())
+
 let print_typed_value p v ty =
   match v, ty with
   | Vint n, Tint(I32, Unsigned, _) ->
@@ -197,6 +201,8 @@ let print_typed_value p v ty =
       fprintf p "%LdLL" (camlint64_of_coqint n)
   | Vptr(b, ofs), _ ->
       fprintf p "<ptr%a>" !print_pointer_hook (b, ofs)
+  | Vptrseg(b, ofs, i), _ ->
+      fprintf p "<ptrseg%a>" !print_pointer_seg_hook (b, ofs, i)
   | Vundef, _ ->
       fprintf p "<undef>"
 
