@@ -406,8 +406,8 @@ Axiom low_half_type:
   forall v, Val.has_type (low_half v) Tint.
 Axiom high_half_type: 
   forall v, Val.has_type (high_half v) Tint.
-Axiom high_half_ptrseg:
-  forall v, ~is_ptrseg (high_half v).
+Axiom high_half_ptrfrag:
+  forall v, ~is_ptrfrag (high_half v).
 
 (** We also axiomatize the small data area.  For simplicity, we
   claim that small data symbols can be accessed by absolute 16-bit

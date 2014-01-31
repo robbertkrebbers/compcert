@@ -187,7 +187,7 @@ Definition sem_cast (v: val) (t1 t2: type) : option val :=
           | Some i => Some (Vint i)
           | None => Some Vundef
           end
-      | Vptrseg b ofs i => Some (Vptrseg b ofs i)
+      | Vptrfrag b ofs i => Some (Vptrfrag b ofs i)
       | _ => Some Vundef
       end
   | cast_case_i2i sz2 si2 =>
@@ -1011,7 +1011,7 @@ Qed.
 Definition optval_self_injects (ov: option val) : Prop :=
   match ov with
   | Some (Vptr b ofs) => False
-  | Some (Vptrseg _ _ _) => False
+  | Some (Vptrfrag _ _ _) => False
   | _ => True
   end.
 

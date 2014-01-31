@@ -515,7 +515,7 @@ Proof.
     destruct i; inv H5. intuition congruence. auto.
   destruct H4; subst. destruct (Genv.find_symbol ge b1); inv H. 
   rewrite Int.add_zero in H3. auto.
-  (* pointer seg *)
+  (* pointer frag *)
   discriminate.
   (* undef *)
   discriminate.

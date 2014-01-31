@@ -748,8 +748,8 @@ Theorem load_cast:
   forall m chunk b ofs v,
   load chunk m b ofs = Some v ->
   match chunk with
-  | Mint8signed => ~is_ptrseg v -> v = Val.sign_ext 8 v
-  | Mint8unsigned => ~is_ptrseg v -> v = Val.zero_ext 8 v
+  | Mint8signed => ~is_ptrfrag v -> v = Val.sign_ext 8 v
+  | Mint8unsigned => ~is_ptrfrag v -> v = Val.zero_ext 8 v
   | Mint16signed => v = Val.sign_ext 16 v
   | Mint16unsigned => v = Val.zero_ext 16 v
   | Mfloat32 => v = Val.singleoffloat v
@@ -763,14 +763,14 @@ Qed.
 
 Theorem load_int8_signed_unsigned:
   forall m b ofs,
-  (forall v, load Mint8unsigned m b ofs = Some v -> ~is_ptrseg v) ->
+  (forall v, load Mint8unsigned m b ofs = Some v -> ~is_ptrfrag v) ->
   load Mint8signed m b ofs = option_map (Val.sign_ext 8) (load Mint8unsigned m b ofs).
 Proof.
   intros until 0. unfold load.
   destruct (valid_access_dec _ Mint8signed _ _ _); [|now rewrite pred_dec_false].
   rewrite pred_dec_true; auto. simpl. intros.
   rewrite decode_val_int8_signed_unsigned; auto.
-  rewrite decode_val_int8_signed_unsigned_ptrseg; eauto.
+  rewrite decode_val_int8_signed_unsigned_ptrfrag; eauto.
 Qed.
 
 Theorem load_int8_signed_unsigned_alt:
@@ -1217,7 +1217,7 @@ Theorem load_pointer_store:
   chunk' = Mint32 /\
   (chunk = Mint32 /\ v = Vptr v_b v_o /\ b' = b /\ ofs' = ofs
   \/ (exists v_i, (chunk = Mint8signed \/ chunk = Mint8unsigned) /\
-    v = Vptrseg v_b v_o v_i /\ b' = b /\ ofs' <= ofs < ofs' + size_chunk Mint32)
+    v = Vptrfrag v_b v_o v_i /\ b' = b /\ ofs' <= ofs < ofs' + size_chunk Mint32)
   \/ (b' <> b \/ ofs' + size_chunk chunk' <= ofs \/ ofs + size_chunk chunk <= ofs')).
 Proof.
   intros until 0; intros LOAD.
@@ -1253,14 +1253,14 @@ Proof.
     { omega. }
 Qed.
 
-Theorem load_pointer_segment_store:
+Theorem load_pointer_frag_store:
   forall chunk' b' ofs' v_b v_o v_i,
-  load chunk' m2 b' ofs' = Some (Vptrseg v_b v_o v_i) ->
+  load chunk' m2 b' ofs' = Some (Vptrfrag v_b v_o v_i) ->
   (chunk' = Mint8signed \/ chunk' = Mint8unsigned \/ chunk' = Mint32) /\
   (chunk = Mint32 /\ v = Vptr v_b v_o /\ b' = b
     /\ ofs <= ofs' < ofs + size_chunk Mint32
   \/ (chunk = Mint8signed \/ chunk = Mint8unsigned \/ chunk = Mint32) /\
-    v = Vptrseg v_b v_o v_i /\ b' = b /\
+    v = Vptrfrag v_b v_o v_i /\ b' = b /\
     ofs < ofs' + size_chunk chunk' /\ ofs' < ofs + size_chunk chunk
   \/ (b' <> b \/ ofs' + size_chunk chunk' <= ofs \/ ofs + size_chunk chunk <= ofs')).
 Proof.
@@ -1268,7 +1268,7 @@ Proof.
   pose proof (store_valid_access _ _ _ _ _ _ STORE) as [_ ALIGN].
   pose proof (load_valid_access _ _ _ _ _ LOAD) as [_ ALIGN'].
   apply load_result in LOAD. rewrite store_mem_contents, PMap.gsspec in LOAD.
-  symmetry in LOAD; apply decode_val_pointer_seg_inv in LOAD. destruct LOAD as [? PSHAPE].
+  symmetry in LOAD; apply decode_val_pointer_frag_inv in LOAD. destruct LOAD as [? PSHAPE].
   split; auto. destruct (peq b' b) as [->|?]; auto.
   set (c := m1.(mem_contents)#b) in *.
   destruct (zle (ofs' + size_chunk chunk') ofs); auto.
@@ -1287,17 +1287,17 @@ Proof.
       rewrite getN_setN_same in PSHAPE by (now rewrite encode_val_length).
       destruct v; unfold encode_val in PSHAPE; try discriminate.
       apply (f_equal rev_if_be) in PSHAPE; rewrite !rev_if_be_involutive in PSHAPE.
-      apply (f_equal (proj_pointer_seg 4)) in PSHAPE.
-      rewrite !proj_inj_pointer_seg in PSHAPE by (compute; omega).
+      apply (f_equal (proj_pointer_frag 4)) in PSHAPE.
+      rewrite !proj_inj_pointer_frag in PSHAPE by (compute; omega).
       right; left. repeat split; congruence || omega. }
     unfold size_chunk_nat in *.
     assert (size_chunk chunk' = 1) as ->.
     { destruct H as [->|[->| ->]]; simpl; intuition. }
-    destruct (inj_pointer_seg_1_encode_val_overlap Mint32
+    destruct (inj_pointer_frag_1_encode_val_overlap Mint32
       v mv v_b v_o v_i) as [[??]|[??]]; auto.
     + left. repeat split; tauto || omega.
     + right; left. repeat split; tauto || omega.
-  * destruct (inj_pointer_seg_encode_val_overlap chunk
+  * destruct (inj_pointer_frag_encode_val_overlap chunk
       (size_chunk_nat chunk') v mv v_b v_o v_i); auto.
     right; left. repeat split; tauto || omega.
 Qed.

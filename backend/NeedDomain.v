@@ -54,9 +54,9 @@ Definition vagree (v w: val) (x: nval) : Prop :=
       match v, w with
       | Vint p, Vint q => iagree p q m
       | Vint p, _ => False
-      | Vptrseg b ofs i, Vptrseg b' ofs' i' => b = b' /\ ofs = ofs' /\ i = i'
-      | Vptrseg _ _ _, Vint _ => m = Int.zero
-      | Vptrseg _ _ _, _ => False
+      | Vptrfrag b ofs i, Vptrfrag b' ofs' i' => b = b' /\ ofs = ofs' /\ i = i'
+      | Vptrfrag _ _ _, Vint _ => m = Int.zero
+      | Vptrfrag _ _ _, _ => False
       | _, _ => True
       end
   | Fsingle =>

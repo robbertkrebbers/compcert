@@ -329,7 +329,7 @@ Fixpoint inj_pointer (n: nat) (b: block) (ofs: int) {struct n}: list memval :=
   | S m => Pointer b ofs m :: inj_pointer m b ofs
   end.
 
-Definition inj_pointer_seg (n : nat) (b: block) (ofs: int) (i : nat) : list memval :=
+Definition inj_pointer_frag (n : nat) (b: block) (ofs: int) (i : nat) : list memval :=
   match n with
   | O => nil
   | S m => Pointer b ofs i :: list_repeat m PointerPad
@@ -357,7 +357,7 @@ Fixpoint check_pointer_pad (n: nat) (vl: list memval) : bool :=
   | S m, PointerPad :: vl' => check_pointer_pad m vl'
   | _, _ => false
   end.
-Definition proj_pointer_seg (n : nat) (vl: list memval) : option (block * int * nat) :=
+Definition proj_pointer_frag (n : nat) (vl: list memval) : option (block * int * nat) :=
   match n, vl with
   | S m, Pointer b ofs i :: vl' =>
      if check_pointer_pad m vl' then Some (b, ofs, i) else None
@@ -385,18 +385,18 @@ Proof.
   now rewrite check_inj_pointer.
 Qed.
 
-Lemma proj_inj_pointer_seg:
+Lemma proj_inj_pointer_frag:
   forall n b ofs i,
   (0 < n)%nat ->
-  proj_pointer_seg n (inj_pointer_seg n b ofs i) = Some (b, ofs, i).
+  proj_pointer_frag n (inj_pointer_frag n b ofs i) = Some (b, ofs, i).
 Proof.
   intros. destruct n as [|n]; [omega|].
-  unfold inj_pointer_seg. unfold proj_pointer_seg.
+  unfold inj_pointer_frag. unfold proj_pointer_frag.
   now rewrite check_repeat_pointer_pad.
 Qed.
 
-Lemma proj_inj_pointer_seg_None:
-  forall n b ofs i, proj_pointer (inj_pointer_seg n b ofs i) = None.
+Lemma proj_inj_pointer_frag_None:
+  forall n b ofs i, proj_pointer (inj_pointer_frag n b ofs i) = None.
 Proof.
   intros. destruct n as [|[|?]]; simpl; rewrite ?andb_false_r; auto.
 Qed.
@@ -429,9 +429,9 @@ Proof.
   destruct m; try discriminate. intros; f_equal; auto.
 Qed.
 
-Lemma proj_pointer_seg_inv:
+Lemma proj_pointer_frag_inv:
   forall n b ofs i mv,
-  proj_pointer_seg n mv = Some (b,ofs,i) -> mv = inj_pointer_seg n b ofs i.
+  proj_pointer_frag n mv = Some (b,ofs,i) -> mv = inj_pointer_frag n b ofs i.
 Proof.
   intros [|n] b ofs i [|[]] ?; simpl in *; try discriminate.
   destruct (check_pointer_pad _ _) eqn:?; inv H.
@@ -469,9 +469,9 @@ Arguments inj_bytes _ : simpl never.
 Arguments check_pointer _ _ _ _ : simpl never.
 Arguments check_pointer_pad _ _ : simpl never.
 Arguments inj_pointer _ _ _ : simpl never.
-Arguments inj_pointer_seg _ _ _ _ : simpl never.
+Arguments inj_pointer_frag _ _ _ _ : simpl never.
 Arguments proj_pointer _ : simpl never.
-Arguments proj_pointer_seg _ _ : simpl never.
+Arguments proj_pointer_frag _ _ : simpl never.
 
 
 Definition rev_if_be {A} (l: list A) : list A :=
@@ -529,8 +529,8 @@ Definition encode_val (chunk: memory_chunk) (v: val) : list memval :=
   | Vint n, (Mint8signed | Mint8unsigned) => inj_bytes (bytes_of_int 1 (Int.unsigned n))
   | Vint n, (Mint16signed | Mint16unsigned) => inj_bytes (bytes_of_int 2 (Int.unsigned n))
   | Vint n, Mint32 => inj_bytes (bytes_of_int 4 (Int.unsigned n))
-  | Vptrseg b ofs i, (Mint8signed | Mint8unsigned) => inj_pointer_seg 1 b ofs i
-  | Vptrseg b ofs i, Mint32 => inj_pointer_seg 4 b ofs i
+  | Vptrfrag b ofs i, (Mint8signed | Mint8unsigned) => inj_pointer_frag 1 b ofs i
+  | Vptrfrag b ofs i, Mint32 => inj_pointer_frag 4 b ofs i
   | Vptr b ofs, Mint32 => inj_pointer 4 b ofs
   | Vlong n, Mint64 => inj_bytes (bytes_of_int 8 (Int64.unsigned n))
   | Vfloat n, Mfloat32 => inj_bytes (bytes_of_int 4 (Int.unsigned (Float.bits_of_single n)))
@@ -558,14 +558,14 @@ Definition decode_val (chunk: memory_chunk) (vl: list memval) : val :=
           match proj_pointer vl with
           | Some (b,ofs) => Vptr b ofs
           | None =>
-              match proj_pointer_seg 4 vl with
-              | Some (b,ofs,i) => Vptrseg b ofs i
+              match proj_pointer_frag 4 vl with
+              | Some (b,ofs,i) => Vptrfrag b ofs i
               | None => Vundef
               end
           end
       | Mint8signed | Mint8unsigned =>
-          match proj_pointer_seg 1 vl with
-          | Some (b,ofs,i) => Vptrseg b ofs i
+          match proj_pointer_frag 1 vl with
+          | Some (b,ofs,i) => Vptrfrag b ofs i
           | None => Vundef
           end
       | _ => Vundef
@@ -593,9 +593,9 @@ Definition decode_encode_val (v1: val) (chunk1 chunk2: memory_chunk) (v2: val) :
   | Vlong n, Mint64, Mfloat64 => v2 = Vfloat(Float.double_of_bits n)
   | Vlong n, (Mint8signed|Mint8unsigned|Mint16signed|Mint16unsigned|Mint32|Mfloat32|Mfloat64), _ => v2 = Vundef
   | Vlong n, _, _ => True (**r nothing meaningful to say about v2 *)
-  | Vptrseg b ofs i, (Mint8signed | Mint8unsigned), (Mint8signed | Mint8unsigned) => v2 = Vptrseg b ofs i
-  | Vptrseg b ofs i, Mint32, Mint32 => v2 = Vptrseg b ofs i
-  | Vptrseg b ofs i, _, _ => v2 = Vundef
+  | Vptrfrag b ofs i, (Mint8signed | Mint8unsigned), (Mint8signed | Mint8unsigned) => v2 = Vptrfrag b ofs i
+  | Vptrfrag b ofs i, Mint32, Mint32 => v2 = Vptrfrag b ofs i
+  | Vptrfrag b ofs i, _, _ => v2 = Vundef
   | Vfloat f, Mfloat32, Mfloat32 => v2 = Vfloat(Float.singleoffloat f)
   | Vfloat f, Mfloat32, Mint32 => v2 = Vint(Float.bits_of_single f)
   | Vfloat f, Mfloat64, Mfloat64 => v2 = Vfloat f
@@ -631,9 +631,9 @@ Proof.
     ?Int.sign_ext_zero_ext, ?Int.zero_ext_idem,
     ?Float.single_of_bits_of_single, ?Float.double_of_bits_of_double by omega; auto.
   * now rewrite proj_inj_pointer.
-  * now rewrite proj_inj_pointer_seg_None.
-  * now rewrite proj_inj_pointer_seg_None.
-  * now rewrite proj_inj_pointer_seg_None.
+  * now rewrite proj_inj_pointer_frag_None.
+  * now rewrite proj_inj_pointer_frag_None.
+  * now rewrite proj_inj_pointer_frag_None.
 Qed.
 
 Lemma decode_encode_val_similar:
@@ -655,10 +655,10 @@ Proof.
   intros. unfold decode_val.
   destruct (proj_bytes _), chunk; simpl; auto.
   * apply Float.single_of_bits_is_single.
-  * destruct (proj_pointer_seg 1 _) as [[[??]?]|]; simpl; auto.
-  * destruct (proj_pointer_seg 1 _) as [[[??]?]|]; simpl; auto.
+  * destruct (proj_pointer_frag 1 _) as [[[??]?]|]; simpl; auto.
+  * destruct (proj_pointer_frag 1 _) as [[[??]?]|]; simpl; auto.
   * destruct (proj_pointer _) as [[??]|]; simpl; auto.
-    destruct (proj_pointer_seg 4 _) as [[[??]?]|]; simpl; auto.
+    destruct (proj_pointer_frag 4 _) as [[[??]?]|]; simpl; auto.
 Qed.
 
 Lemma encode_val_int8_signed_unsigned:
@@ -700,8 +700,8 @@ Lemma decode_val_cast:
   forall chunk l,
   let v := decode_val chunk l in
   match chunk with
-  | Mint8signed => ~is_ptrseg v -> v = Val.sign_ext 8 v
-  | Mint8unsigned => ~is_ptrseg v -> v = Val.zero_ext 8 v
+  | Mint8signed => ~is_ptrfrag v -> v = Val.sign_ext 8 v
+  | Mint8unsigned => ~is_ptrfrag v -> v = Val.zero_ext 8 v
   | Mint16signed => v = Val.sign_ext 16 v
   | Mint16unsigned => v = Val.zero_ext 16 v
   | Mfloat32 => v = Val.singleoffloat v
@@ -710,25 +710,25 @@ Lemma decode_val_cast:
 Proof.
   unfold decode_val; intros; destruct chunk; auto; destruct (proj_bytes _); auto.
   * unfold Val.sign_ext. rewrite Int.sign_ext_idem; auto. omega.
-  * destruct (proj_pointer_seg _ _) as [[[??]?]|]; simpl; auto. now intros [].
+  * destruct (proj_pointer_frag _ _) as [[[??]?]|]; simpl; auto. now intros [].
   * unfold Val.zero_ext. rewrite Int.zero_ext_idem; auto. omega.
-  * destruct (proj_pointer_seg _ _) as [[[??]?]|]; simpl; auto. now intros [].
+  * destruct (proj_pointer_frag _ _) as [[[??]?]|]; simpl; auto. now intros [].
   * unfold Val.sign_ext. rewrite Int.sign_ext_idem; auto. omega.
   * unfold Val.zero_ext. rewrite Int.zero_ext_idem; auto. omega.
   * simpl. rewrite Float.singleoffloat_of_bits. auto.
 Qed.
 Lemma decode_val_int8_signed_unsigned:
   forall l,
-  ~is_ptrseg (decode_val Mint8signed l) ->
+  ~is_ptrfrag (decode_val Mint8signed l) ->
   decode_val Mint8signed l = Val.sign_ext 8 (decode_val Mint8unsigned l).
 Proof.
   intros. rewrite (decode_val_cast Mint8signed) by auto.
   unfold decode_val. destruct (proj_bytes _); [|reflexivity].
   simpl. now rewrite Int.sign_ext_zero_ext, Int.sign_ext_idem by omega.
 Qed.
-Lemma decode_val_int8_signed_unsigned_ptrseg:
+Lemma decode_val_int8_signed_unsigned_ptrfrag:
   forall l,
-  is_ptrseg (decode_val Mint8signed l) <-> is_ptrseg (decode_val Mint8unsigned l).
+  is_ptrfrag (decode_val Mint8signed l) <-> is_ptrfrag (decode_val Mint8unsigned l).
 Proof.
   intros. unfold decode_val. destruct (proj_bytes _).
   * split; inversion 1.
@@ -740,7 +740,7 @@ Lemma decode_val_int8_signed_unsigned_alt:
 Proof.
   intros. unfold decode_val. destruct (proj_bytes _).
   * simpl. now rewrite Int.sign_ext_zero_ext.
-  * now destruct (proj_pointer_seg _ _) as [[[??]?]|].
+  * now destruct (proj_pointer_frag _ _) as [[[??]?]|].
 Qed.
 
 Lemma decode_val_int16_signed_unsigned:
@@ -759,12 +759,12 @@ Lemma decode_val_pointer_inv:
 Proof.
   unfold decode_val. intros.
   destruct (proj_bytes _), chunk; try congruence.
-  * destruct (proj_pointer_seg _ _) as [[[??]?]|]; discriminate.
-  * destruct (proj_pointer_seg _ _) as [[[??]?]|]; discriminate.
+  * destruct (proj_pointer_frag _ _) as [[[??]?]|]; discriminate.
+  * destruct (proj_pointer_frag _ _) as [[[??]?]|]; discriminate.
   * destruct (proj_pointer _) as [[??]|] eqn:?.
     { inv H. now rewrite <-(proj_pointer_inv _ _ (rev_if_be mvl)),
         rev_if_be_involutive. }
-    destruct (proj_pointer_seg _ _) as [[[??]?]|]; discriminate.
+    destruct (proj_pointer_frag _ _) as [[[??]?]|]; discriminate.
 Qed.
 
 Lemma in_inj_bytes:
@@ -777,8 +777,8 @@ Lemma in_inj_pointer:
 Proof.
   induction n; simpl; intuition eauto.
 Qed.
-Lemma in_inj_pointer_seg:
-  forall mv n b ofs i, In mv (inj_pointer_seg n b ofs i) ->
+Lemma in_inj_pointer_frag:
+  forall mv n b ofs i, In mv (inj_pointer_frag n b ofs i) ->
   mv = Pointer b ofs i \/ (mv = PointerPad /\ n <> 1%nat).
 Proof.
   intros mv [|n] b ofs i; [intros []|intros [?|?]; auto].
@@ -794,8 +794,8 @@ Local Ltac simplify_in_inj :=
       apply in_inj_pointer in H; destruct H; subst
     | H : In _ (inj_bytes _) |- _ =>
       apply in_inj_bytes in H; destruct H as (?&?&?); subst
-    | H : In _ (inj_pointer_seg _ _ _ _) |- _ =>
-      apply in_inj_pointer_seg in H; destruct H as [?|[??]]; subst
+    | H : In _ (inj_pointer_frag _ _ _ _) |- _ =>
+      apply in_inj_pointer_frag in H; destruct H as [?|[??]]; subst
     | H : Pointer _ _ _ = Pointer _ _ _ |- _ =>
       injection H; clear H; intros; subst
     end.
@@ -804,46 +804,46 @@ Lemma inj_pointer_encode_val_overlap:
   forall chunk n v mv b ofs,
   In mv (inj_pointer n b ofs) -> In mv (encode_val chunk v) ->
   chunk <> Mint32 ->
-  exists i, (chunk = Mint8signed \/ chunk = Mint8unsigned) /\ v = Vptrseg b ofs i.
+  exists i, (chunk = Mint8signed \/ chunk = Mint8unsigned) /\ v = Vptrfrag b ofs i.
 Proof.
   intros chunk n v mv b ofs INJ ENC CNK.
   unfold encode_val in ENC; rewrite in_rev_if_be in ENC.
   destruct chunk, v; simplify_in_inj; intuition eauto.
 Qed.
 
-Lemma decode_val_pointer_seg_inv:
+Lemma decode_val_pointer_frag_inv:
   forall chunk mvl b ofs i,
-  decode_val chunk mvl = Vptrseg b ofs i ->
+  decode_val chunk mvl = Vptrfrag b ofs i ->
   (chunk = Mint8signed \/ chunk = Mint8unsigned \/ chunk = Mint32) /\
-  mvl = rev_if_be (inj_pointer_seg (size_chunk_nat chunk) b ofs i).
+  mvl = rev_if_be (inj_pointer_frag (size_chunk_nat chunk) b ofs i).
 Proof.
   unfold decode_val. intros.
   destruct (proj_bytes _), chunk; try congruence.
-  * destruct (proj_pointer_seg _ _) as [[[??]?]|] eqn:?; inv H.
-    erewrite <-proj_pointer_seg_inv, rev_if_be_involutive by eauto; auto.
-  * destruct (proj_pointer_seg _ _) as [[[??]?]|] eqn:?; inv H.
-    erewrite <-proj_pointer_seg_inv, rev_if_be_involutive by eauto; auto.
+  * destruct (proj_pointer_frag _ _) as [[[??]?]|] eqn:?; inv H.
+    erewrite <-proj_pointer_frag_inv, rev_if_be_involutive by eauto; auto.
+  * destruct (proj_pointer_frag _ _) as [[[??]?]|] eqn:?; inv H.
+    erewrite <-proj_pointer_frag_inv, rev_if_be_involutive by eauto; auto.
   * destruct (proj_pointer _) as [[??]|] eqn:?; inv H.
-    destruct (proj_pointer_seg _ _) as [[[??]?]|] eqn:?; inv H1.
-    erewrite <-(proj_pointer_seg_inv 4), rev_if_be_involutive by eauto; auto.
+    destruct (proj_pointer_frag _ _) as [[[??]?]|] eqn:?; inv H1.
+    erewrite <-(proj_pointer_frag_inv 4), rev_if_be_involutive by eauto; auto.
 Qed.
 
-Lemma inj_pointer_seg_encode_val_overlap:
+Lemma inj_pointer_frag_encode_val_overlap:
   forall chunk n v mv b ofs i,
-  In mv (inj_pointer_seg n b ofs i) -> In mv (encode_val chunk v) ->
+  In mv (inj_pointer_frag n b ofs i) -> In mv (encode_val chunk v) ->
   chunk <> Mint32 ->
-  (chunk = Mint8signed \/ chunk = Mint8unsigned) /\ v = Vptrseg b ofs i.
+  (chunk = Mint8signed \/ chunk = Mint8unsigned) /\ v = Vptrfrag b ofs i.
 Proof.
   intros chunk n v mv b ofs i INJ ENC CNK.
   unfold encode_val in ENC; rewrite in_rev_if_be in ENC.
   destruct chunk, v; simplify_in_inj; intuition eauto.
 Qed.
 
-Lemma inj_pointer_seg_1_encode_val_overlap:
+Lemma inj_pointer_frag_1_encode_val_overlap:
   forall chunk v mv b ofs i,
-  In mv (inj_pointer_seg 1 b ofs i) -> In mv (encode_val chunk v) ->
+  In mv (inj_pointer_frag 1 b ofs i) -> In mv (encode_val chunk v) ->
   (chunk = Mint32 /\ v = Vptr b ofs)
-  \/ (chunk = Mint8signed \/ chunk = Mint8unsigned \/ chunk = Mint32) /\ v = Vptrseg b ofs i.
+  \/ (chunk = Mint8signed \/ chunk = Mint8unsigned \/ chunk = Mint32) /\ v = Vptrfrag b ofs i.
 Proof.
   intros chunk v mv b ofs i INJ ENC.
   unfold encode_val in ENC; rewrite in_rev_if_be in ENC.
@@ -863,7 +863,7 @@ Proof.
     (proj_bytes (rev_if_be (if Archi.big_endian then l1 else l2))) as [b2|] eqn:?;
     repeat match goal with
     | |- context [ proj_pointer ?l ] => destruct (proj_pointer l) as [[??]|]
-    | |- context [ proj_pointer_seg ?n ?l ] => destruct (proj_pointer_seg n l) as [[[??]?]|]
+    | |- context [ proj_pointer_frag ?n ?l ] => destruct (proj_pointer_frag n l) as [[[??]?]|]
     end; try reflexivity.
   assert (UR: forall b,
     length b = 4%nat -> Int.unsigned (Int.repr (int_of_bytes b)) = int_of_bytes b).
@@ -1145,17 +1145,17 @@ Proof.
     unfold check_pointer_pad; fold check_pointer_pad; auto.
   destruct H; try discriminate; auto.
 Qed.
-Lemma proj_pointer_seg_inject:
+Lemma proj_pointer_frag_inject:
   forall f vl1 vl2,
   list_forall2 (memval_inject f) vl1 vl2 ->
   forall n b ofs i,
-  proj_pointer_seg n vl1 = Some (b,ofs,i) ->
+  proj_pointer_frag n vl1 = Some (b,ofs,i) ->
   exists b' delta,
   f b = Some (b', delta) /\
-  proj_pointer_seg n vl2 = Some (b', Int.add ofs (Int.repr delta), i).
+  proj_pointer_frag n vl2 = Some (b', Int.add ofs (Int.repr delta), i).
 Proof.
   destruct 1; intros [|?]; try discriminate.
-  unfold proj_pointer_seg. intros. destruct H; try discriminate.
+  unfold proj_pointer_frag. intros. destruct H; try discriminate.
   destruct (check_pointer_pad n al) eqn:?; inv H1.
   exists b2, delta. erewrite check_pointer_pad_inject; eauto.
 Qed.
@@ -1185,25 +1185,25 @@ Proof.
   * unfold check_pointer_pad; fold check_pointer_pad.
     destruct m; auto.
 Qed.
-Lemma proj_pointer_seg_undef:
-  forall n vl, In Undef vl -> proj_pointer_seg n vl = None.
+Lemma proj_pointer_frag_undef:
+  forall n vl, In Undef vl -> proj_pointer_frag n vl = None.
 Proof.
-  intros; unfold proj_pointer_seg.
+  intros; unfold proj_pointer_frag.
   destruct n; auto.
   destruct vl as [|[]?]; auto.
   destruct H; try discriminate.
   now rewrite check_pointer_pad_undef.
 Qed.
 
-Lemma proj_pointer_seg_not_pointer:
+Lemma proj_pointer_frag_not_pointer:
   forall f vl1 vl2,
   list_forall2 (memval_inject f) vl1 vl2 ->
   forall b ofs i,
-  proj_pointer_seg 4 vl1 = Some (b, ofs, i) ->
+  proj_pointer_frag 4 vl1 = Some (b, ofs, i) ->
   proj_pointer vl2 = None.
 Proof.
   destruct 1; try discriminate. inv H; try discriminate.
-  unfold proj_pointer, proj_pointer_seg. intros.
+  unfold proj_pointer, proj_pointer_frag. intros.
   destruct H0; try discriminate. inv H0; try discriminate.
   unfold check_pointer. simpl. now rewrite !andb_false_r.
 Qed.
@@ -1220,29 +1220,29 @@ Proof.
     intros. rewrite H0. destruct chunk; constructor. }
   destruct chunk; auto.
   * destruct (proj_bytes (rev_if_be vl2)) eqn:?.
-    { rewrite proj_pointer_seg_undef;
+    { rewrite proj_pointer_frag_undef;
         eauto using proj_bytes_not_inject, rev_if_be_forall2. }
-    destruct (proj_pointer_seg 1 (rev_if_be vl1)) as [[[??]?]|] eqn:?; [|constructor].
-    exploit (proj_pointer_seg_inject f (rev_if_be vl1) (rev_if_be vl2));
+    destruct (proj_pointer_frag 1 (rev_if_be vl1)) as [[[??]?]|] eqn:?; [|constructor].
+    exploit (proj_pointer_frag_inject f (rev_if_be vl1) (rev_if_be vl2));
       eauto using rev_if_be_forall2.
     intros (?&?&?&E). rewrite E. econstructor; eauto.
   * destruct (proj_bytes (rev_if_be vl2)) eqn:?.
-    { rewrite proj_pointer_seg_undef;
+    { rewrite proj_pointer_frag_undef;
         eauto using proj_bytes_not_inject, rev_if_be_forall2. }
-    destruct (proj_pointer_seg 1 (rev_if_be vl1)) as [[[??]?]|] eqn:?; [|constructor].
-    exploit (proj_pointer_seg_inject f (rev_if_be vl1) (rev_if_be vl2));
+    destruct (proj_pointer_frag 1 (rev_if_be vl1)) as [[[??]?]|] eqn:?; [|constructor].
+    exploit (proj_pointer_frag_inject f (rev_if_be vl1) (rev_if_be vl2));
       eauto using rev_if_be_forall2.
     intros (?&?&?&E). rewrite E. econstructor; eauto.
   * destruct (proj_bytes (rev_if_be vl2)) eqn:?.
-    { rewrite proj_pointer_undef, proj_pointer_seg_undef;
+    { rewrite proj_pointer_undef, proj_pointer_frag_undef;
         eauto using proj_bytes_not_inject, rev_if_be_forall2. }
     destruct (proj_pointer (rev_if_be vl1)) as [[??]|] eqn:?.
     { exploit (proj_pointer_inject f (rev_if_be vl1) (rev_if_be vl2));
         eauto using rev_if_be_forall2.
       intros (?&?&?&E). rewrite E. econstructor; eauto. }
-    destruct (proj_pointer_seg 4 (rev_if_be vl1)) as [[[??]?]|] eqn:?; [|constructor].
-    erewrite proj_pointer_seg_not_pointer by eauto using rev_if_be_forall2.
-    exploit (proj_pointer_seg_inject f (rev_if_be vl1) (rev_if_be vl2));
+    destruct (proj_pointer_frag 4 (rev_if_be vl1)) as [[[??]?]|] eqn:?; [|constructor].
+    erewrite proj_pointer_frag_not_pointer by eauto using rev_if_be_forall2.
+    exploit (proj_pointer_frag_inject f (rev_if_be vl1) (rev_if_be vl2));
       eauto using rev_if_be_forall2.
     intros (?&?&?&E). rewrite E. econstructor; eauto.
 Qed.

@@ -42,16 +42,16 @@ Inductive val: Type :=
   | Vlong: int64 -> val
   | Vfloat: float -> val
   | Vptr: block -> int -> val
-  | Vptrseg: block -> int -> nat -> val.
+  | Vptrfrag: block -> int -> nat -> val.
 
-Inductive is_ptrseg: val -> Prop :=
-  intro_is_ptrseg: forall b ofs i, is_ptrseg (Vptrseg b ofs i).
+Inductive is_ptrfrag: val -> Prop :=
+  intro_is_ptrfrag: forall b ofs i, is_ptrfrag (Vptrfrag b ofs i).
 
-Lemma ptrseg_dec v : { is_ptrseg v } + { ~is_ptrseg v }.
+Lemma ptrfrag_dec v : { is_ptrfrag v } + { ~is_ptrfrag v }.
 Proof.
  refine
   match v with
-  | Vptrseg _ _ _ => left _
+  | Vptrfrag _ _ _ => left _
   | _ => right _
   end; first [constructor | inversion 1].
 Defined.
@@ -79,7 +79,7 @@ Definition has_type (v: val) (t: typ) : Prop :=
   | Vfloat _, Tfloat => True
   | Vfloat f, Tsingle => Float.is_single f
   | Vptr _ _, Tint => True
-  | Vptrseg _ _ _, Tint => True
+  | Vptrfrag _ _ _, Tint => True
   | _, _ => False
   end.
 
@@ -213,7 +213,7 @@ Definition sign_ext (nbits: Z) (v: val) : val :=
 Definition sign_ext_8_alt (v : val) : val :=
   match v with
   | Vint n => Vint (Int.sign_ext 8 n)
-  | Vptrseg b ofs i => Vptrseg b ofs i
+  | Vptrfrag b ofs i => Vptrfrag b ofs i
   | _ => Vundef
   end.
 
@@ -705,7 +705,7 @@ Definition load_result (chunk: memory_chunk) (v: val) :=
   | Mint32, Vint n => Vint n
   | Mint32, Vptr b ofs => Vptr b ofs
   | Mint64, Vlong n => Vlong n
-  | (Mint8signed | Mint8unsigned | Mint32), Vptrseg b ofs i => Vptrseg b ofs i
+  | (Mint8signed | Mint8unsigned | Mint32), Vptrfrag b ofs i => Vptrfrag b ofs i
   | Mfloat32, Vfloat f => Vfloat(Float.singleoffloat f)
   | Mfloat64, Vfloat f => Vfloat f
   | _, _ => Vundef
@@ -963,7 +963,7 @@ Proof.
   simpl. decEq. symmetry. eapply Int.modu_and; eauto.
 Qed.
 
-Lemma and_ptrseg v1 v2 : ~is_ptrseg (Val.and v1 v2).
+Lemma and_ptrfrag v1 v2 : ~is_ptrfrag (Val.and v1 v2).
 Proof.
   now destruct v1, v2.
 Qed.
@@ -979,7 +979,7 @@ Proof.
   decEq. apply Int.and_assoc.
 Qed.
 
-Lemma or_ptrseg v1 v2 : ~is_ptrseg (Val.or v1 v2).
+Lemma or_ptrfrag v1 v2 : ~is_ptrfrag (Val.or v1 v2).
 Proof.
   now destruct v1, v2.
 Qed.
@@ -995,7 +995,7 @@ Proof.
   decEq. apply Int.or_assoc.
 Qed.
 
-Lemma xor_ptrseg v1 v2 : ~is_ptrseg (Val.xor v1 v2).
+Lemma xor_ptrfrag v1 v2 : ~is_ptrfrag (Val.xor v1 v2).
 Proof.
   now destruct v1, v2.
 Qed.
@@ -1440,11 +1440,11 @@ Inductive val_inject (mi: meminj): val -> val -> Prop :=
       mi b1 = Some (b2, delta) ->
       ofs2 = Int.add ofs1 (Int.repr delta) ->
       val_inject mi (Vptr b1 ofs1) (Vptr b2 ofs2)
-  | val_inject_ptrseg:
+  | val_inject_ptrfrag:
       forall b1 ofs1 b2 ofs2 delta i,
       mi b1 = Some (b2, delta) ->
       ofs2 = Int.add ofs1 (Int.repr delta) ->
-      val_inject mi (Vptrseg b1 ofs1 i) (Vptrseg b2 ofs2 i)
+      val_inject mi (Vptrfrag b1 ofs1 i) (Vptrfrag b2 ofs2 i)
   | val_inject_undef: forall v,
       val_inject mi Vundef v.
 

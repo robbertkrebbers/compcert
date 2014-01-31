@@ -34,7 +34,7 @@ Lemma high_half_zero:
   forall v,
   Val.add (high_half v) Vzero = high_half v.
 Proof.
-  intros. generalize (high_half_type v). generalize (high_half_ptrseg v).
+  intros. generalize (high_half_type v). generalize (high_half_ptrfrag v).
   rewrite Val.add_commut.
   case (high_half v); simpl; intros; try contradiction.
   * auto. 

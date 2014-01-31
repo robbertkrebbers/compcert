@@ -808,10 +808,10 @@ Lemma eval_operation_inj:
   exists v2, eval_operation genv sp2 op vl2 m2 = Some v2 /\ val_inject f v1 v2.
 Proof.
   intros. destruct op; simpl in H1; simpl; FuncInv; InvInject; TrivialExists.
-  inv H4; simpl; eauto using val_inject_ptrseg.
-  inv H4; simpl; eauto using val_inject_ptrseg.
-  inv H4; simpl; eauto using val_inject_ptrseg.
-  inv H4; simpl; eauto using val_inject_ptrseg.
+  inv H4; simpl; eauto using val_inject_ptrfrag.
+  inv H4; simpl; eauto using val_inject_ptrfrag.
+  inv H4; simpl; eauto using val_inject_ptrfrag.
+  inv H4; simpl; eauto using val_inject_ptrfrag.
   inv H4; simpl; auto.
   inv H4; inv H2; simpl; auto. econstructor; eauto. 
     rewrite Int.sub_add_l. auto.

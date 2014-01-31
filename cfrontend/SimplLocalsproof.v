@@ -188,8 +188,8 @@ Qed.
 Inductive val_casted: val -> type -> Prop :=
   | val_casted_vundef: forall si attr,
       val_casted Vundef (Tint I8 si attr)
-  | val_casted_ptr_seg: forall b ofs i si attr,
-      val_casted (Vptrseg b ofs i) (Tint I8 si attr)
+  | val_casted_ptrfrag: forall b ofs i si attr,
+      val_casted (Vptrfrag b ofs i) (Tint I8 si attr)
   | val_casted_int: forall sz si attr n,
       cast_int_int sz si n = n ->
       val_casted (Vint n) (Tint sz si attr)

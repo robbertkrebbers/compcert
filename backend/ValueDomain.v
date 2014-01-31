@@ -545,13 +545,13 @@ Inductive vmatch : val -> aval -> Prop :=
   | vmatch_ifptr_i: forall i p, vmatch (Vint i) (Ifptr p)
   | vmatch_ifptr_l: forall i p, vmatch (Vlong i) (Ifptr p)
   | vmatch_ifptr_f: forall f p, vmatch (Vfloat f) (Ifptr p)
-  | vmatch_ifptr_ps: forall b ofs i p, pmatch b ofs p -> vmatch (Vptrseg b ofs i) (Ifptr p)
+  | vmatch_ifptr_ps: forall b ofs i p, pmatch b ofs p -> vmatch (Vptrfrag b ofs i) (Ifptr p)
   | vmatch_ifptr_p: forall b ofs p, pmatch b ofs p -> vmatch (Vptr b ofs) (Ifptr p).
 
 Lemma vmatch_ifptr:
   forall v p,
   (forall b ofs, v = Vptr b ofs -> pmatch b ofs p) ->
-  (forall b ofs i, v = Vptrseg b ofs i -> pmatch b ofs p) ->
+  (forall b ofs i, v = Vptrfrag b ofs i -> pmatch b ofs p) ->
   vmatch v (Ifptr p).
 Proof.
   intros. destruct v; constructor; eauto.
@@ -2009,12 +2009,12 @@ Proof.
   intros. exploit Mem.load_cast; eauto. exploit Mem.load_type; eauto. 
   destruct chunk; simpl; intros.
 - (* int8signed *)
-  destruct (ptrseg_dec v).
+  destruct (ptrfrag_dec v).
   { inv i; inv H0. destruct H4; repeat constructor; eauto using pmatch_glob. }
   rewrite H2 by easy. destruct v, (eq_aptr p Pbot); simpl; constructor. omega.
   apply is_sign_ext_sgn; auto with va.
 - (* int8unsigned *)
-  destruct (ptrseg_dec v).
+  destruct (ptrfrag_dec v).
   { inv i; inv H0. destruct H4; repeat constructor; eauto using pmatch_glob. }
   rewrite H2 by easy. destruct v, (eq_aptr p Pbot); simpl; constructor. omega.
   apply is_zero_ext_uns; auto with va.
@@ -2327,9 +2327,9 @@ Lemma store_provenance:
   Mem.store chunk m b ofs v = Some m' ->
   Mem.loadbytes m' b' ofs' 1 = Some (Pointer b'' ofs'' i :: nil) ->
   v = Vptr b'' ofs'' /\ chunk = Mint32
-  \/ v = Vptrseg b'' ofs'' i /\ chunk = Mint8signed
-  \/ v = Vptrseg b'' ofs'' i /\ chunk = Mint8unsigned
-  \/ v = Vptrseg b'' ofs'' i /\ chunk = Mint32
+  \/ v = Vptrfrag b'' ofs'' i /\ chunk = Mint8signed
+  \/ v = Vptrfrag b'' ofs'' i /\ chunk = Mint8unsigned
+  \/ v = Vptrfrag b'' ofs'' i /\ chunk = Mint32
   \/ Mem.loadbytes m b' ofs' 1 = Some (Pointer b'' ofs'' i :: nil).
 Proof.
   intros. exploit storebytes_provenance; eauto. eapply Mem.store_storebytes; eauto. 
@@ -2344,7 +2344,6 @@ Proof.
   }
   unfold encode_val in A; rewrite in_rev_if_be in A; destruct chunk, v;
   try (eelim IN_ENC_BYTES; eassumption);
-  try (eelim IN_ENC_PTR_SEG; eassumption);
   try (eelim IN_REP_UNDEF; eassumption); eauto;
   simpl in A; intuition congruence.
 Qed.
@@ -2364,7 +2363,7 @@ Proof.
   * inv H1. apply vmatch_vplub_l. now constructor.
   * apply vmatch_vplub_r. apply A with (chunk := Mint32) (ofs := ofs').
     rewrite <- LOAD. symmetry. eapply Mem.load_store_other; eauto.
-+ exploit Mem.load_pointer_segment_store; eauto.
++ exploit Mem.load_pointer_frag_store; eauto.
   intros [?[(?&?&?) | [(j&?&?&?) | DISJ]]]; subst.
   * now inv H1; simpl; constructor; apply pmatch_lub_l.
   * now inv H1; simpl; constructor; apply pmatch_lub_l.
@@ -2402,7 +2401,7 @@ Proof.
   * apply pmatch_lub_r. eauto.
 + intros bx ofsx i ->.
   exploit Mem.load_loadbytes; eauto. intros (bytes' & P & Q).
-  exploit decode_val_pointer_seg_inv; eauto. intros [??]; subst.
+  exploit decode_val_pointer_frag_inv; eauto. intros [??]; subst.
   exploit (In_loadbytes m' b' (Pointer bx ofsx i)); eauto.
   { apply in_rev_if_be. destruct (size_chunk_nat_pos chunk) as [? ->].
     simpl; auto. }
