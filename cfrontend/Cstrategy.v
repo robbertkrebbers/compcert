@@ -371,7 +371,7 @@ Inductive estep: state -> trace -> state -> Prop :=
   | step_builtin: forall f C ef tyargs rargs ty k e m vargs t vres m',
       leftcontext RV RV C ->
       eval_simple_list e m rargs tyargs vargs ->
-      external_call ef ge vargs m t vres m' ->
+      builtin_call ef ge vargs m t vres m' ->
       estep (ExprState f (C (Ebuiltin ef tyargs rargs ty)) k e m)
           t (ExprState f (C (Eval vres ty)) k e m').
 
@@ -570,7 +570,7 @@ Definition invert_expr_prop (a: expr) (m: mem) : Prop :=
       exprlist_all_values rargs ->
       exists vargs, exists t, exists vres, exists m',
          cast_arguments rargs tyargs vargs
-      /\ external_call ef ge vargs m t vres m'
+      /\ builtin_call ef ge vargs m t vres m'
   | _ => True
   end.
 
@@ -1546,8 +1546,8 @@ Proof.
   econstructor; econstructor. left; eapply step_postincr_stuck with (v1 := v1'); eauto. 
   rewrite Heqo; auto.
   (* builtin *)
-  exploit external_call_trace_length; eauto. destruct t1; simpl; intros. 
-  exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]]. 
+  exploit builtin_call_trace_length; eauto. destruct t1; simpl; intros. 
+  exploit builtin_call_receptive; eauto. intros [vres2 [m2 EC2]]. 
   econstructor; econstructor. left; eapply step_builtin; eauto.
   omegaContradiction.
   (* external calls *)
@@ -1577,7 +1577,7 @@ Proof.
   (* postincr stuck *)
   exploit deref_loc_trace; eauto. destruct t; auto. destruct t; tauto.
   (* builtins *)
-  exploit external_call_trace_length; eauto.
+  exploit builtin_call_trace_length; eauto.
   destruct t; simpl; auto. destruct t; simpl; auto. intros; omegaContradiction.
   (* external calls *)
   exploit external_call_trace_length; eauto.
@@ -1899,9 +1899,9 @@ with eval_funcall: mem -> fundef -> list val -> trace -> mem -> val -> Prop :=
       outcome_result_value out f.(fn_return) vres ->
       Mem.free_list m3 (blocks_of_env e) = Some m4 ->
       eval_funcall m (Internal f) vargs t m4 vres
-  | eval_funcall_external: forall m ef targs tres cconv vargs t vres m',
+  | eval_funcall_external: forall m ef targs tres vargs t vres m',
       external_call ef ge vargs m t vres m' ->
-      eval_funcall m (External ef targs tres cconv) vargs t m' vres.
+      eval_funcall m (External ef targs tres) vargs t m' vres.
 
 Scheme eval_expression_ind5 := Minimality for eval_expression Sort Prop
   with eval_expr_ind5 := Minimality for eval_expr Sort Prop

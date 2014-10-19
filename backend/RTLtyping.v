@@ -110,8 +110,8 @@ Inductive wt_instr : instruction -> Prop :=
       wt_instr (Itailcall sig ros args)
   | wt_Ibuiltin:
       forall ef args res s,
-      map env args = (ef_sig ef).(sig_args) ->
-      env res = proj_sig_res (ef_sig ef) ->
+      map env args = (builtin_sig ef).(sig_args) ->
+      env res = proj_sig_res (builtin_sig ef) ->
       valid_successor s ->
       wt_instr (Ibuiltin ef args res s)
   | wt_Icond:
@@ -247,7 +247,7 @@ Definition type_instr (e: S.typenv) (i: instruction) : res S.typenv :=
         else Error(msg "tailcall not possible")
       else Error(msg "bad return type in tailcall")
   | Ibuiltin ef args res s =>
-      let sig := ef_sig ef in
+      let sig := builtin_sig ef in
       do x <- check_successor s;
       do e1 <- S.set_list e args sig.(sig_args);
       S.set e1 res (proj_sig_res sig)
@@ -678,13 +678,13 @@ Qed.
 Lemma wt_exec_Ibuiltin:
   forall env f ef (ge: genv) args res s vargs m t vres m' rs,
   wt_instr f env (Ibuiltin ef args res s) ->
-  external_call ef ge vargs m t vres m' ->
+  builtin_call ef ge vargs m t vres m' ->
   wt_regset env rs ->
   wt_regset env (rs#res <- vres).
 Proof.
   intros. inv H. 
   eapply wt_regset_assign; eauto. 
-  rewrite H7; eapply external_call_well_typed; eauto.
+  rewrite H7; eapply builtin_call_well_typed; eauto.
 Qed.
 
 Lemma wt_instr_at:
@@ -821,5 +821,3 @@ Proof.
 Qed.
 
 End SUBJECT_REDUCTION.
-
-  

@@ -42,7 +42,7 @@ Inductive expr : Type :=
   | Econdition : condexpr -> expr -> expr -> expr
   | Elet : expr -> expr -> expr
   | Eletvar : nat -> expr
-  | Ebuiltin : external_function -> exprlist -> expr
+  | Ebuiltin : builtin -> exprlist -> expr
   | Eexternal : ident -> signature -> exprlist -> expr
 
 with exprlist : Type :=
@@ -78,7 +78,7 @@ Inductive stmt : Type :=
   | Sstore : memory_chunk -> addressing -> exprlist -> expr -> stmt
   | Scall : option ident -> signature -> expr + ident -> exprlist -> stmt
   | Stailcall: signature -> expr + ident -> exprlist -> stmt
-  | Sbuiltin : option ident -> external_function -> exprlist -> stmt
+  | Sbuiltin : option ident -> builtin -> exprlist -> stmt
   | Sseq: stmt -> stmt -> stmt
   | Sifthenelse: condexpr -> stmt -> stmt -> stmt
   | Sloop: stmt -> stmt
@@ -189,7 +189,7 @@ Inductive eval_expr: letenv -> expr -> val -> Prop :=
       eval_expr le (Eletvar n) v
   | eval_Ebuiltin: forall le ef al vl v,
       eval_exprlist le al vl ->
-      external_call ef ge vl m E0 v m ->
+      builtin_call ef ge vl m E0 v m ->
       eval_expr le (Ebuiltin ef al) v
   | eval_Eexternal: forall le id sg al b ef vl v,
       Genv.find_symbol ge id = Some b ->
@@ -339,7 +339,7 @@ Inductive step: state -> trace -> state -> Prop :=
 
   | step_builtin: forall f optid ef al k sp e m vl t v m',
       eval_exprlist sp e m nil al vl ->
-      external_call ef ge vl m t v m' ->
+      builtin_call ef ge vl m t v m' ->
       step (State f (Sbuiltin optid ef al) k sp e m)
          t (State f Sskip k sp (set_optvar optid v e) m')
 

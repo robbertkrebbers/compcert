@@ -92,7 +92,7 @@ Inductive block_shape: Type :=
          (mv1: moves) (ros': mreg + ident) (mv2: moves) (s: node)
   | BStailcall (sg: signature) (ros: reg + ident) (args: list reg)
          (mv1: moves) (ros': mreg + ident)
-  | BSbuiltin (ef: external_function) (args: list reg) (res: reg)
+  | BSbuiltin (ef: builtin) (args: list reg) (res: reg)
          (mv1: moves) (args': list mreg) (res': list mreg)
          (mv2: moves) (s: node)
   | BSannot (text: ident) (targs: list annot_arg) (args: list reg) (res: reg)
@@ -273,11 +273,11 @@ Definition pair_instr_block
       match b1 with
       | Lbuiltin ef' args' res' :: b2 =>
           let (mv2, b3) := extract_moves nil b2 in
-          assertion (external_function_eq ef ef');
+          assertion (builtin_eq ef ef');
           assertion (check_succ s b3);
           Some(BSbuiltin ef args res mv1 args' res' mv2 s)
       | Lannot ef' args' :: b2 =>
-          assertion (external_function_eq ef ef');
+          assertion (builtin_eq ef ef');
           assertion (check_succ s b2);
           match ef with
           | EF_annot txt typ => Some(BSannot txt typ args res mv1 args' s)
@@ -920,11 +920,11 @@ Definition transfer_aux (f: RTL.function) (env: regenv)
       do e1 <- track_moves env mv2 e;
       let args' := map R args' in
       let res' := map R res' in
-      do e2 <- remove_equations_res res (sig_res (ef_sig ef)) res' e1;
+      do e2 <- remove_equations_res res (sig_res (builtin_sig ef)) res' e1;
       assertion (reg_unconstrained res e2);
       assertion (forallb (fun l => loc_unconstrained l e2) res');
       assertion (can_undef (destroyed_by_builtin ef) e2);
-      do e3 <- add_equations_args args (sig_args (ef_sig ef)) args' e2;
+      do e3 <- add_equations_args args (sig_args (builtin_sig ef)) args' e2;
       track_moves env mv1 e3
   | BSannot txt typ args res mv1 args' s =>
       do e1 <- add_equations_args args (annot_args_typ typ) args' e;
@@ -1196,4 +1196,3 @@ Definition transf_fundef (fd: RTL.fundef) : res LTL.fundef :=
 
 Definition transf_program (p: RTL.program) : res LTL.program :=
   transform_partial_program transf_fundef p.
-

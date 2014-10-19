@@ -268,8 +268,6 @@ let rec expr p (prec, e) =
   | Ebuiltin(EF_annot_val(txt, _), _, args, _) ->
       fprintf p "__builtin_annot_val@[<hov 1>(%S%a)@]"
                 (extern_atom txt) exprlist (false, args)
-  | Ebuiltin(EF_external(id, sg), _, args, _) ->
-      fprintf p "%s@[<hov 1>(%a)@]" (extern_atom id) exprlist (true, args)
   | Ebuiltin(_, _, args, _) ->
       fprintf p "<unknown builtin>@[<hov 1>(%a)@]" exprlist (true, args)
   | Eparen(a1, tycast, ty) ->
@@ -402,10 +400,11 @@ let print_function p id f =
 
 let print_fundef p id fd =
   match fd with
-  | External(EF_external(_,_), args, res, cconv) ->
+  | External(EF_external(_,_) as ef, args, res) ->
       fprintf p "extern %s;@ @ "
-                (name_cdecl (extern_atom id) (Tfunction(args, res, cconv)))
-  | External(_, _, _, _) ->
+                (name_cdecl (extern_atom id)
+                  (Tfunction(args, res, sig_cc (ef_sig ef))))
+  | External(_, _, _) ->
       ()
   | Internal f ->
       print_function p id f
@@ -569,7 +568,7 @@ let collect_function f =
 
 let collect_globdef (id, gd) =
   match gd with
-  | Gfun(External(_, args, res, _)) -> collect_type_list args; collect_type res
+  | Gfun(External(_, args, res)) -> collect_type_list args; collect_type res
   | Gfun(Internal f) -> collect_function f
   | Gvar v -> collect_type v.gvar_info
 

@@ -284,7 +284,7 @@ let rec type_stmt env blk ret s =
         raise (Error (sprintf "In call:\n%s" s))
       end
   | Sbuiltin(optid, ef, el) ->
-      let sg = ef_sig ef in
+      let sg = builtin_sig ef in
       let tel = type_exprlist env [] el in
       begin try
         unify_list (ty_of_sig_args sg.sig_args) tel;

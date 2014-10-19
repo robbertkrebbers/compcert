@@ -105,7 +105,7 @@ Local Open Scope string_scope.
 Definition builtin_write16_reversed := ident_of_string "__builtin_write16_reversed".
 Definition builtin_write32_reversed := ident_of_string "__builtin_write32_reversed".
 
-Definition destroyed_by_builtin (ef: external_function): list mreg :=
+Definition destroyed_by_builtin (ef: builtin): list mreg :=
   match ef with
   | EF_memcpy sz al =>
       if zle sz 32 then CX :: X7 :: nil else CX :: SI :: DI :: nil
@@ -146,24 +146,16 @@ Definition mregs_for_operation (op: operation): list (option mreg) * option mreg
   | _ => (nil, None)
   end.
 
-Definition builtin_negl := ident_of_string "__builtin_negl".
-Definition builtin_addl := ident_of_string "__builtin_addl".
-Definition builtin_subl := ident_of_string "__builtin_subl".
-Definition builtin_mull := ident_of_string "__builtin_mull".
-
-Definition mregs_for_builtin (ef: external_function): list (option mreg) * list (option mreg) :=
+Definition mregs_for_builtin (ef: builtin): list (option mreg) * list (option mreg) :=
   match ef with
   | EF_memcpy sz al =>
      if zle sz 32 then (Some AX :: Some DX :: nil, nil) else (Some DI :: Some SI :: nil, nil)
-  | EF_builtin id sg =>
-     if ident_eq id builtin_negl then
-       (Some DX :: Some AX :: nil, Some DX :: Some AX :: nil)
-     else if ident_eq id builtin_addl || ident_eq id builtin_subl then
-       (Some DX :: Some AX :: Some CX :: Some BX :: nil, Some DX :: Some AX :: nil)
-     else if ident_eq id builtin_mull then
-       (Some AX :: Some DX :: nil, Some DX :: Some AX :: nil)
-     else
-       (nil, nil)
+  | EF_i64_builtin i64_neg =>
+     (Some DX :: Some AX :: nil, Some DX :: Some AX :: nil)
+  | EF_i64_builtin (i64_add | i64_sub) =>
+     (Some DX :: Some AX :: Some CX :: Some BX :: nil, Some DX :: Some AX :: nil)
+  | EF_i64_builtin i64_mul =>
+     (Some AX :: Some DX :: nil, Some DX :: Some AX :: nil)
   | _ => (nil, nil)
   end.
 
@@ -238,4 +230,3 @@ Definition two_address_op (op: operation) : bool :=
   | Ohighlong => false
   | Ocmp c => false
   end.
-

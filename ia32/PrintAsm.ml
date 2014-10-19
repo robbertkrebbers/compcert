@@ -585,23 +585,6 @@ let print_builtin_inline oc name args res =
         fprintf oc "	movapd	%a, %a\n" freg a3 freg res;
         fprintf oc "	%s231sd	%a, %a, %a\n" opcode freg a1 freg a2 freg res
       end
-  (* 64-bit integer arithmetic *)
-  | "__builtin_negl", [IR ah; IR al], [IR rh; IR rl] ->
-      assert (ah = EDX && al = EAX && rh = EDX && rl = EAX);
-      fprintf oc "	negl	%a\n" ireg EAX;
-      fprintf oc "	adcl	$0, %a\n" ireg EDX;
-      fprintf oc "	negl	%a\n" ireg EDX
-  | "__builtin_addl", [IR ah; IR al; IR bh; IR bl], [IR rh; IR rl] ->
-      assert (ah = EDX && al = EAX && bh = ECX && bl = EBX && rh = EDX && rl = EAX);
-      fprintf oc "	addl	%a, %a\n" ireg EBX ireg EAX;
-      fprintf oc "	adcl	%a, %a\n" ireg ECX ireg EDX
-  | "__builtin_subl", [IR ah; IR al; IR bh; IR bl], [IR rh; IR rl] ->
-      assert (ah = EDX && al = EAX && bh = ECX && bl = EBX && rh = EDX && rl = EAX);
-      fprintf oc "	subl	%a, %a\n" ireg EBX ireg EAX;
-      fprintf oc "	sbbl	%a, %a\n" ireg ECX ireg EDX
-  | "__builtin_mull", [IR a; IR b], [IR rh; IR rl] ->
-      assert (a = EAX && b = EDX && rh = EDX && rl = EAX);
-      fprintf oc "	mull    %a\n" ireg EDX
   (* Memory accesses *)
   | "__builtin_read16_reversed", [IR a1], [IR res] ->
       fprintf oc "	movzwl	0(%a), %a\n" ireg a1 ireg res;
@@ -632,6 +615,30 @@ let print_builtin_inline oc name args res =
       invalid_arg ("unrecognized builtin " ^ name)
   end;
   fprintf oc "%s end builtin %s\n" comment name
+
+let print_i64_builtin_inline oc op args res =
+  fprintf oc "%s begin i64 builtin\n" comment;
+  begin match op, args, res with
+  | Coq_i64_neg, [IR ah; IR al], [IR rh; IR rl] ->
+      assert (ah = EDX && al = EAX && rh = EDX && rl = EAX);
+      fprintf oc "	negl	%a\n" ireg EAX;
+      fprintf oc "	adcl	$0, %a\n" ireg EDX;
+      fprintf oc "	negl	%a\n" ireg EDX
+  | Coq_i64_add, [IR ah; IR al; IR bh; IR bl], [IR rh; IR rl] ->
+      assert (ah = EDX && al = EAX && bh = ECX && bl = EBX && rh = EDX && rl = EAX);
+      fprintf oc "	addl	%a, %a\n" ireg EBX ireg EAX;
+      fprintf oc "	adcl	%a, %a\n" ireg ECX ireg EDX
+  | Coq_i64_sub, [IR ah; IR al; IR bh; IR bl], [IR rh; IR rl] ->
+      assert (ah = EDX && al = EAX && bh = ECX && bl = EBX && rh = EDX && rl = EAX);
+      fprintf oc "	subl	%a, %a\n" ireg EBX ireg EAX;
+      fprintf oc "	sbbl	%a, %a\n" ireg ECX ireg EDX
+  | Coq_i64_mul, [IR a; IR b], [IR rh; IR rl] ->
+      assert (a = EAX && b = EDX && rh = EDX && rl = EAX);
+      fprintf oc "	mull    %a\n" ireg EDX
+  | _ ->
+      invalid_arg ("unrecognized i64 builtin")
+  end;
+  fprintf oc "%s end i64 builtin\n" comment
 
 (* Printing of instructions *)
 
@@ -881,6 +888,8 @@ let print_instruction oc = function
           fprintf oc "%s begin inline assembly\n" comment;
           fprintf oc "	%s\n" (extern_atom txt);
           fprintf oc "%s end inline assembly\n" comment
+      | EF_i64_builtin op ->
+          print_i64_builtin_inline oc op args res
       | _ ->
           assert false
       end

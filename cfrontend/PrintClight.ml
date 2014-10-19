@@ -134,12 +134,12 @@ let rec print_stmt p s =
                 print_expr_list (true, el)
   | Sbuiltin(None, ef, tyargs, el) ->
       fprintf p "@[<hv 2>builtin %s@,(@[<hov 0>%a@]);@]"
-                (name_of_external ef)
+                (name_of_builtin ef)
                 print_expr_list (true, el)
   | Sbuiltin(Some id, ef, tyargs, el) ->
       fprintf p "@[<hv 2>%s =@ builtin %s@,(@[<hov 0>%a@]);@]"
                 (temp_name id)
-                (name_of_external ef)
+                (name_of_builtin ef)
                 print_expr_list (true, el)
   | Ssequence(Sskip, s2) ->
       print_stmt p s2
@@ -223,12 +223,12 @@ and print_stmt_for p s =
                 print_expr_list (true, el)
   | Sbuiltin(None, ef, tyargs, el) ->
       fprintf p "@[<hv 2>builtin %s@,(@[<hov 0>%a@]);@]"
-                (name_of_external ef)
+                (name_of_builtin ef)
                 print_expr_list (true, el)
   | Sbuiltin(Some id, ef, tyargs, el) ->
       fprintf p "@[<hv 2>%s =@ builtin %s@,(@[<hov 0>%a@]);@]"
                 (temp_name id)
-                (name_of_external ef)
+                (name_of_builtin ef)
                 print_expr_list (true, el)
   | _ ->
       fprintf p "({ %a })" print_stmt s
@@ -252,10 +252,11 @@ let print_function p id f =
 
 let print_fundef p id fd =
   match fd with
-  | External(EF_external(_,_), args, res, cconv) ->
+  | External(EF_external(_,_) as ef, args, res) ->
       fprintf p "extern %s;@ @ "
-                (name_cdecl (extern_atom id) (Tfunction(args, res, cconv)))
-  | External(_, _, _, _) ->
+                (name_cdecl (extern_atom id)
+                   (Tfunction(args, res, sig_cc (ef_sig ef))))
+  | External(_, _, _) ->
       ()
   | Internal f ->
       print_function p id f
@@ -317,7 +318,7 @@ let collect_function f =
 
 let collect_globdef (id, gd) =
   match gd with
-  | Gfun(External(_, args, res, _)) -> collect_type_list args; collect_type res
+  | Gfun(External(_, args, res)) -> collect_type_list args; collect_type res
   | Gfun(Internal f) -> collect_function f
   | Gvar v -> collect_type v.gvar_info
 

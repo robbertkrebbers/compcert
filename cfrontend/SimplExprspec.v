@@ -1103,8 +1103,8 @@ Inductive tr_fundef: Csyntax.fundef -> Clight.fundef -> Prop :=
   | tr_internal: forall f tf,
       tr_function f tf ->
       tr_fundef (Csyntax.Internal f) (Clight.Internal tf)
-  | tr_external: forall ef targs tres cconv,
-      tr_fundef (Csyntax.External ef targs tres cconv) (External ef targs tres cconv).
+  | tr_external: forall ef targs tres,
+      tr_fundef (Csyntax.External ef targs tres) (External ef targs tres).
 
 Lemma transl_function_spec:
   forall f tf g g' i,
@@ -1153,4 +1153,3 @@ Proof.
 Qed.
 
 End SPEC.
-

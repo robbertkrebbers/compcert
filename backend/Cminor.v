@@ -142,7 +142,7 @@ Inductive stmt : Type :=
   | Sstore : memory_chunk -> expr -> expr -> stmt
   | Scall : option ident -> signature -> expr -> list expr -> stmt
   | Stailcall: signature -> expr -> list expr -> stmt
-  | Sbuiltin : option ident -> external_function -> list expr -> stmt
+  | Sbuiltin : option ident -> builtin -> list expr -> stmt
   | Sseq: stmt -> stmt -> stmt
   | Sifthenelse: expr -> stmt -> stmt -> stmt
   | Sloop: stmt -> stmt
@@ -478,7 +478,7 @@ Inductive step: state -> trace -> state -> Prop :=
 
   | step_builtin: forall f optid ef bl k sp e m vargs t vres m',
       eval_exprlist sp e m bl vargs ->
-      external_call ef ge vargs m t vres m' ->
+      builtin_call ef ge vargs m t vres m' ->
       step (State f (Sbuiltin optid ef bl) k sp e m)
          t (State f Sskip k sp (set_optvar optid vres e) m')
 
@@ -586,12 +586,13 @@ Proof.
   assert (t1 = E0 -> exists s2, step (Genv.globalenv p) s t2 s2).
     intros. subst. inv H0. exists s1; auto.
   inversion H; subst; auto.
-  exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]]. 
+  exploit builtin_call_receptive; eauto. intros [vres2 [m2 EC2]]. 
   exists (State f Sskip k sp (set_optvar optid vres2 e) m2). econstructor; eauto. 
   exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]]. 
   exists (Returnstate vres2 k m2). econstructor; eauto.
 (* trace length *)
-  red; intros; inv H; simpl; try omega; eapply external_call_trace_length; eauto.
+  red; intros; inv H; simpl; try omega;
+    eauto using builtin_call_trace_length, external_call_trace_length.
 Qed.
 
 (** * Alternate operational semantics (big-step) *)
@@ -695,7 +696,7 @@ with exec_stmt:
   | exec_Sbuiltin:
       forall f sp e m optid ef bl t m' vargs vres e',
       eval_exprlist ge sp e m bl vargs ->
-      external_call ef ge vargs m t vres m' ->
+      builtin_call ef ge vargs m t vres m' ->
       e' = set_optvar optid vres e ->
       exec_stmt f sp e m (Sbuiltin optid ef bl) t e' m' Out_normal
   | exec_Sifthenelse:

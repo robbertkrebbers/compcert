@@ -70,7 +70,7 @@ Definition is_dead (v: nval) :=
 Definition is_int_zero (v: nval) :=
   match v with I n => Int.eq n Int.zero | _ => false end.
 
-Function transfer_builtin (app: VA.t) (ef: external_function) (args: list reg) (res: reg)
+Function transfer_builtin (app: VA.t) (ef: builtin) (args: list reg) (res: reg)
                           (ne: NE.t) (nm: nmem) : NA.t :=
   match ef, args with
   | EF_vload chunk, a1::nil =>
@@ -196,10 +196,8 @@ Definition transf_function (rm: romem) (f: function) : res function :=
       Error (msg "Neededness analysis failed")
   end.
 
-
 Definition transf_fundef (rm: romem) (fd: fundef) : res fundef :=
   AST.transf_partial_fundef (transf_function rm) fd.
 
 Definition transf_program (p: program) : res program :=
   transform_partial_program (transf_fundef (romem_for_program p)) p.
-

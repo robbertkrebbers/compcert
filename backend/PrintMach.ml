@@ -76,9 +76,9 @@ let print_instruction pp i =
       fprintf pp "\ttailcall %a\n" ros fn
   | Mbuiltin(ef, args, res) ->
       fprintf pp "\t%a = %s(%a)\n"
-        regs res (name_of_external ef) regs args
+        regs res (name_of_builtin ef) regs args
   | Mannot(ef, args) ->
-      fprintf pp "\t%s(%a)\n" (name_of_external ef) annot_params args
+      fprintf pp "\t%s(%a)\n" (name_of_builtin ef) annot_params args
   | Mlabel lbl ->
       fprintf pp "%5d:" (P.to_int lbl)
   | Mgoto lbl ->

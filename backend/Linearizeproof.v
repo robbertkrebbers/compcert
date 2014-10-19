@@ -639,14 +639,14 @@ Proof.
   (* Lbuiltin *)
   left; econstructor; split. simpl.
   apply plus_one. eapply exec_Lbuiltin; eauto.
-  eapply external_call_symbols_preserved'; eauto.
+  eapply builtin_call_symbols_preserved'; eauto.
   exact symbols_preserved. exact varinfo_preserved.
   econstructor; eauto.
 
   (* Lannot *)
   left; econstructor; split. simpl.
   apply plus_one. eapply exec_Lannot; eauto.
-  eapply external_call_symbols_preserved'; eauto.
+  eapply builtin_call_symbols_preserved'; eauto.
   exact symbols_preserved. exact varinfo_preserved.
   econstructor; eauto.
 

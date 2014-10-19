@@ -790,7 +790,7 @@ Ltac UseTransfer :=
   destruct X as (tv & A & B).
   econstructor; split.
   eapply exec_Ibuiltin; eauto.
-  eapply external_call_symbols_preserved.
+  eapply builtin_call_symbols_preserved.
   simpl. rewrite <- H4. constructor. eauto.   
   exact symbols_preserved. exact varinfo_preserved.
   eapply match_succ_states; eauto. simpl; auto.
@@ -810,7 +810,7 @@ Ltac UseTransfer :=
   destruct X as (tv & A & B).
   econstructor; split.
   eapply exec_Ibuiltin; eauto.
-  eapply external_call_symbols_preserved.
+  eapply builtin_call_symbols_preserved.
   simpl. econstructor; eauto.   
   exact symbols_preserved. exact varinfo_preserved.
   eapply match_succ_states; eauto. simpl; auto.
@@ -824,7 +824,7 @@ Ltac UseTransfer :=
   intros (EQ & tm' & A & B). subst v. 
   econstructor; split.
   eapply exec_Ibuiltin; eauto.
-  eapply external_call_symbols_preserved. simpl; eauto. 
+  eapply builtin_call_symbols_preserved. simpl; eauto. 
   exact symbols_preserved. exact varinfo_preserved.
   eapply match_succ_states; eauto. simpl; auto.
   apply eagree_update; eauto 3 with na.
@@ -836,7 +836,7 @@ Ltac UseTransfer :=
   intros (EQ & tm' & A & B). subst v. 
   econstructor; split.
   eapply exec_Ibuiltin; eauto.
-  eapply external_call_symbols_preserved. simpl. 
+  eapply builtin_call_symbols_preserved. simpl. 
   rewrite volatile_store_global_charact. exists b; split; eauto. 
   exact symbols_preserved. exact varinfo_preserved.
   eapply match_succ_states; eauto. simpl; auto.
@@ -868,7 +868,7 @@ Ltac UseTransfer :=
   assert (LD2: Val.lessdef rs#dst te#dst) by eauto 3 with na. rewrite <- H1 in LD2.
   econstructor; split.
   eapply exec_Ibuiltin; eauto.
-  eapply external_call_symbols_preserved. simpl.
+  eapply builtin_call_symbols_preserved. simpl.
   inv LD1. inv LD2. econstructor; eauto.  
   exact symbols_preserved. exact varinfo_preserved.
   eapply match_succ_states; eauto. simpl; auto.
@@ -891,7 +891,7 @@ Ltac UseTransfer :=
   inv H0. 
   econstructor; split. 
   eapply exec_Ibuiltin; eauto. 
-  eapply external_call_symbols_preserved. simpl; constructor. 
+  eapply builtin_call_symbols_preserved. simpl; constructor. 
   eapply eventval_list_match_lessdef; eauto 2 with na.
   exact symbols_preserved. exact varinfo_preserved.
   eapply match_succ_states; eauto. simpl; auto.
@@ -900,7 +900,7 @@ Ltac UseTransfer :=
   inv H0. destruct _x; inv H1. destruct _x; inv H4.
   econstructor; split. 
   eapply exec_Ibuiltin; eauto. 
-  eapply external_call_symbols_preserved. simpl; constructor. 
+  eapply builtin_call_symbols_preserved. simpl; constructor. 
   eapply eventval_match_lessdef; eauto 2 with na.
   exact symbols_preserved. exact varinfo_preserved.
   eapply match_succ_states; eauto. simpl; auto.
@@ -911,12 +911,12 @@ Ltac UseTransfer :=
     destruct _x; auto. destruct _x0; auto. destruct _x0; auto. destruct _x0; auto. contradiction. 
   }
   clear y TI. 
-  exploit external_call_mem_extends; eauto 2 with na. 
+  exploit builtin_call_mem_extends; eauto 2 with na. 
   eapply magree_extends; eauto. intros. apply nlive_all. 
   intros (v' & tm' & A & B & C & D & E). 
   econstructor; split.
   eapply exec_Ibuiltin; eauto. 
-  eapply external_call_symbols_preserved. eauto.
+  eapply builtin_call_symbols_preserved. eauto.
   exact symbols_preserved. exact varinfo_preserved.
   eapply match_succ_states; eauto. simpl; auto.
   apply eagree_update; eauto 3 with na.
@@ -1020,5 +1020,3 @@ Proof.
 Qed.
 
 End PRESERVATION.
-
-

@@ -122,7 +122,7 @@ Fixpoint annot_strength_reduction
   end.
 
 Function builtin_strength_reduction
-      (ae: AE.t) (ef: external_function) (args: list reg) :=
+      (ae: AE.t) (ef: builtin) (args: list reg) :=
   match ef, args with
   | EF_vload chunk, r1 :: nil =>
       match areg ae r1 with

@@ -1860,7 +1860,7 @@ Proof.
   econstructor; split. 
   left. eapply plus_left. constructor.  apply star_one.
   econstructor; eauto.
-  eapply external_call_symbols_preserved; eauto. 
+  eapply builtin_call_symbols_preserved; eauto. 
   exact symbols_preserved. exact varinfo_preserved. 
   traceEq.
   econstructor; eauto.
@@ -1871,7 +1871,7 @@ Proof.
   econstructor; split. 
   left. eapply plus_left. constructor. apply star_one.
   econstructor; eauto.
-  eapply external_call_symbols_preserved; eauto. 
+  eapply builtin_call_symbols_preserved; eauto. 
   exact symbols_preserved. exact varinfo_preserved. 
   traceEq.
   econstructor; eauto.

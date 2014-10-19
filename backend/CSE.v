@@ -476,9 +476,9 @@ Definition transfer (f: function) (approx: PMap.t VA.t) (pc: node) (before: numb
           empty_numbering
       | Ibuiltin ef args res s =>
           match ef with
-          | EF_external _ _ | EF_malloc | EF_free | EF_inline_asm _ =>
+          | EF_inline_asm _ =>
               empty_numbering
-          | EF_builtin _ _ | EF_vstore _ | EF_vstore_global _ _ _ =>
+          | EF_i64_builtin _ | EF_builtin _ _ | EF_vstore _ | EF_vstore_global _ _ _ =>
               set_unknown (kill_all_loads before) res
           | EF_memcpy sz al =>
               match args with
@@ -576,4 +576,3 @@ Definition transf_fundef (rm: romem) (f: fundef) : res fundef :=
 
 Definition transf_program (p: program) : res program :=
   transform_partial_program (transf_fundef (romem_for_program p)) p.
-

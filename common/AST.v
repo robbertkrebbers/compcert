@@ -21,6 +21,7 @@ Require String.
 Require Import Errors.
 Require Import Integers.
 Require Import Floats.
+Require Import Maps.
 
 Set Implicit Arguments.
 
@@ -223,6 +224,55 @@ Record program (F V: Type) : Type := mkprogram {
 
 Definition prog_defs_names (F V: Type) (p: program F V) : list ident :=
   List.map fst p.(prog_defs).
+
+Section convert_defs.
+Context {G V : Type}.
+
+Fixpoint convert_defs (decls : list (ident * globdef G V))
+    (m : PTree.t (globdef G V)) : option (PTree.t (globdef G V)) :=
+  match decls with
+  | nil => Some m
+  | (id,decl) :: decls =>
+     match PTree.get id m with
+     | None => convert_defs decls (PTree.set id decl m)
+     | Some _ => None
+     end
+  end.
+Lemma convert_defs_get:
+  forall decls m m' id decl,
+  convert_defs decls m = Some m' ->
+  m' ! id = Some decl -> In (id,decl) decls \/ m ! id = Some decl.
+Proof.
+  induction decls as [|[id' decl'] decls IH]; simpl; intros m m' id decl Hm ?.
+  { inv Hm; eauto. }
+  destruct (m ! id') as [decl''|] eqn:?; inv Hm.
+  destruct (IH (PTree.set id' decl' m) m' id decl); eauto.
+  destruct (ident_eq id id') as [->|?].
+  { rewrite PTree.gss in H0; inv H0; eauto. }
+  rewrite PTree.gso in H0 by auto; eauto.
+Qed.
+Lemma convert_defs_not_get:
+  forall decls m m' id decl,
+  convert_defs decls m = Some m' ->
+  m ! id = Some decl -> ~In id (map fst decls).
+Proof.
+  induction decls as [|[id' decl'] decls IH]; simpl; intros m m' id decl Hm ?.
+  { eauto. }
+  destruct (m ! id') as [decl'''|] eqn:?; inv Hm.
+  destruct (ident_eq id id'); [congruence|].
+  intros [?|?]; [congruence|].
+  eapply IH; eauto using PTree.gso. rewrite PTree.gso by auto; eauto.
+Qed.
+Lemma convert_defs_norep:
+  forall decls m m',
+  convert_defs decls m = Some m' -> list_norepet (map fst decls).
+Proof.
+  induction decls as [|[id' decl'] decls IH]; simpl; intros m m' Hm.
+  { constructor. }
+  destruct (m ! id') as [decl|] eqn:?; inv Hm.
+  constructor; eauto using convert_defs_not_get, PTree.gss.
+Qed.
+End convert_defs.
 
 (** * Generic transformations over programs *)
 
@@ -521,13 +571,104 @@ Qed.
   compiler built-in functions.  We define a type for external functions
   and associated operations. *)
 
+Inductive i64_function :=
+  | i64_dtos                      (**r float64 -> signed long *)
+  | i64_dtou                      (**r float64 -> unsigned long *)
+  | i64_stod                      (**r signed long -> float64 *)
+  | i64_utod                      (**r unsigned long -> float64 *)
+  | i64_stof                      (**r signed long -> float32 *)
+  | i64_utof                      (**r unsigned long -> float32 *)
+  | i64_sdiv                      (**r signed division *)
+  | i64_udiv                      (**r unsigned division *)
+  | i64_smod                      (**r signed remainder *)
+  | i64_umod                      (**r unsigned remainder *)
+  | i64_shl                       (**r shift left *)
+  | i64_shr                       (**r shift right unsigned *)
+  | i64_sar                       (**r shift right signed *).
+
+Inductive i64_builtin :=
+  | i64_neg                       (**r opposite *)
+  | i64_add                       (**r addition *)
+  | i64_sub                       (**r subtraction *)
+  | i64_mul                       (**r multiplication 32x32->64 *).
+
+Lemma i64_function_eq (op1 op2 : i64_function) : {op1 = op2} + {op1 <> op2}.
+Proof.
+  decide equality.
+Defined.
+
+Definition i64_function_name (op : i64_function) :=
+  match op with
+  | i64_dtos => "__i64_dtos"
+  | i64_dtou => "__i64_dtou"
+  | i64_stod => "__i64_stod"
+  | i64_utod => "__i64_utod"
+  | i64_stof => "__i64_stof"
+  | i64_utof => "__i64_utof"
+  | i64_sdiv => "__i64_sdiv"
+  | i64_udiv => "__i64_udiv"
+  | i64_smod => "__i64_smod"
+  | i64_umod => "__i64_umod"
+  | i64_shl => "__i64_shl"
+  | i64_shr => "__i64_shr"
+  | i64_sar => "__i64_sar"
+  end.
+Definition i64_function_ident (op : i64_function) :=
+  ident_of_string (i64_function_name op).
+
+Definition i64_builtin_name (op : i64_builtin) :=
+  match op with
+  | i64_neg => "__builtin_negl"
+  | i64_add => "__builtin_addl"
+  | i64_sub => "__ibuiltin_subl"
+  | i64_mul => "__builtin_mull"
+  end.
+Definition i64_builtin_ident (op : i64_builtin) :=
+  ident_of_string (i64_builtin_name op).
+
+Definition sig_l_l := mksignature (Tlong :: nil) (Some Tlong) cc_default.
+Definition sig_l_f := mksignature (Tlong :: nil) (Some Tfloat) cc_default.
+Definition sig_l_s := mksignature (Tlong :: nil) (Some Tsingle) cc_default.
+Definition sig_f_l := mksignature (Tfloat :: nil) (Some Tlong) cc_default.
+Definition sig_ll_l := mksignature (Tlong :: Tlong :: nil) (Some Tlong) cc_default.
+Definition sig_li_l := mksignature (Tlong :: Tint :: nil) (Some Tlong) cc_default.
+Definition sig_ii_l := mksignature (Tint :: Tint :: nil) (Some Tlong) cc_default.
+
+Definition i64_function_sig (op : i64_function) : signature :=
+  match op with
+  | i64_dtos | i64_dtou => sig_f_l
+  | i64_stod | i64_utod => sig_l_f
+  | i64_stof | i64_utof => sig_l_s
+  | i64_sdiv | i64_udiv | i64_smod | i64_umod => sig_ll_l
+  | i64_shl | i64_shr | i64_sar => sig_li_l
+  end.
+
+Definition i64_builtin_sig (op : i64_builtin) : signature :=
+  match op with
+  | i64_neg => sig_l_l
+  | i64_add | i64_sub => sig_ll_l
+  | i64_mul => sig_ii_l
+  end.
+
 Inductive external_function : Type :=
   | EF_external (name: ident) (sg: signature)
      (** A system call or library function.  Produces an event
          in the trace. *)
+  | EF_malloc
+     (** Dynamic memory allocation.  Takes the requested size in bytes
+         as argument; returns a pointer to a fresh block of the given size.
+         Produces no observable event. *)
+  | EF_free
+     (** Dynamic memory deallocation.  Takes a pointer to a block
+         allocated by an [EF_malloc] external call and frees the
+         corresponding block.
+         Produces no observable event. *)
+  | EF_i64_function (op : i64_function).
+
+Inductive builtin : Type :=
   | EF_builtin (name: ident) (sg: signature)
      (** A compiler built-in function.  Behaves like an external, but
-         can be inlined by the compiler. *)
+         should be inlined by the compiler. *)
   | EF_vload (chunk: memory_chunk)
      (** A volatile read operation.  If the adress given as first argument
          points within a volatile global variable, generate an
@@ -543,15 +684,6 @@ Inductive external_function : Type :=
   | EF_vstore_global (chunk: memory_chunk) (id: ident) (ofs: int)
      (** A volatile store operation in a global variable. 
          Specialized version of [EF_vstore]. *)
-  | EF_malloc
-     (** Dynamic memory allocation.  Takes the requested size in bytes
-         as argument; returns a pointer to a fresh block of the given size.
-         Produces no observable event. *)
-  | EF_free
-     (** Dynamic memory deallocation.  Takes a pointer to a block
-         allocated by an [EF_malloc] external call and frees the
-         corresponding block.
-         Produces no observable event. *)
   | EF_memcpy (sz: Z) (al: Z)
      (** Block copy, of [sz] bytes, between addresses that are [al]-aligned. *)
   | EF_annot (text: ident) (targs: list annot_arg)
@@ -568,7 +700,7 @@ Inductive external_function : Type :=
          used with caution, as it can invalidate the semantic
          preservation theorem.  Generated only if [-finline-asm] is
          given. *)
-
+  | EF_i64_builtin (op : i64_builtin)
 with annot_arg : Type :=
   | AA_arg (ty: typ)
   | AA_int (n: int)
@@ -586,40 +718,30 @@ Fixpoint annot_args_typ (targs: list annot_arg) : list typ :=
 Definition ef_sig (ef: external_function): signature :=
   match ef with
   | EF_external name sg => sg
+  | EF_malloc => mksignature (Tint :: nil) (Some Tint) cc_default
+  | EF_free => mksignature (Tint :: nil) None cc_default
+  | EF_i64_function op => i64_function_sig op
+  end.
+
+Definition builtin_sig (ef: builtin): signature :=
+  match ef with
   | EF_builtin name sg => sg
   | EF_vload chunk => mksignature (Tint :: nil) (Some (type_of_chunk chunk)) cc_default
   | EF_vstore chunk => mksignature (Tint :: type_of_chunk chunk :: nil) None cc_default
   | EF_vload_global chunk _ _ => mksignature nil (Some (type_of_chunk chunk)) cc_default
   | EF_vstore_global chunk _ _ => mksignature (type_of_chunk chunk :: nil) None cc_default
-  | EF_malloc => mksignature (Tint :: nil) (Some Tint) cc_default
-  | EF_free => mksignature (Tint :: nil) None cc_default
   | EF_memcpy sz al => mksignature (Tint :: Tint :: nil) None cc_default
   | EF_annot text targs => mksignature (annot_args_typ targs) None cc_default
   | EF_annot_val text targ => mksignature (targ :: nil) (Some targ) cc_default
   | EF_inline_asm text => mksignature nil None cc_default
+  | EF_i64_builtin op => i64_builtin_sig op
   end.
 
 (** Whether an external function should be inlined by the compiler. *)
 
-Definition ef_inline (ef: external_function) : bool :=
-  match ef with
-  | EF_external name sg => false
-  | EF_builtin name sg => true
-  | EF_vload chunk => true
-  | EF_vstore chunk => true
-  | EF_vload_global chunk id ofs => true
-  | EF_vstore_global chunk id ofs => true
-  | EF_malloc => false
-  | EF_free => false
-  | EF_memcpy sz al => true
-  | EF_annot text targs => true
-  | EF_annot_val text targ => true
-  | EF_inline_asm text => true
-  end.
+(** Whether a builtin must reload its arguments. *)
 
-(** Whether an external function must reload its arguments. *)
-
-Definition ef_reloads (ef: external_function) : bool :=
+Definition builtin_reloads (ef: builtin) : bool :=
   match ef with
   | EF_annot text targs => false
   | _ => true
@@ -630,10 +752,17 @@ Definition ef_reloads (ef: external_function) : bool :=
 Definition external_function_eq: forall (ef1 ef2: external_function), {ef1=ef2} + {ef1<>ef2}.
 Proof.
   generalize ident_eq signature_eq chunk_eq typ_eq zeq Int.eq_dec; intros.
-  decide equality.
-  apply list_eq_dec. decide equality. apply Float.eq_dec. 
+  decide equality. decide equality.
 Defined.
 Global Opaque external_function_eq.
+
+Definition builtin_eq: forall (ef1 ef2: builtin), {ef1=ef2} + {ef1<>ef2}.
+Proof.
+  generalize ident_eq signature_eq chunk_eq typ_eq zeq Int.eq_dec; intros.
+  decide equality. apply list_eq_dec. decide equality. apply Float.eq_dec.
+  decide equality.
+Defined.
+Global Opaque builtin_eq.
 
 (** Function definitions are the union of internal and external functions. *)
 

@@ -2027,18 +2027,18 @@ Proof.
 
 (* builtin *)
   exploit eval_simpl_exprlist; eauto with compat. intros [CASTED [tvargs [C D]]].
-  exploit external_call_mem_inject; eauto. apply match_globalenvs_preserves_globals; eauto with compat.
+  exploit builtin_call_mem_inject; eauto. apply match_globalenvs_preserves_globals; eauto with compat.
   intros [j' [tvres [tm' [P [Q [R [S [T [U V]]]]]]]]].
   econstructor; split.
-  apply plus_one. econstructor; eauto. eapply external_call_symbols_preserved; eauto. 
+  apply plus_one. econstructor; eauto. eapply builtin_call_symbols_preserved; eauto. 
   exact symbols_preserved. exact varinfo_preserved.
   econstructor; eauto with compat.
   eapply match_envs_set_opttemp; eauto. 
   eapply match_envs_extcall; eauto. 
   eapply match_cont_extcall; eauto.
   inv MENV; xomega. inv MENV; xomega. 
-  eapply Ple_trans; eauto. eapply external_call_nextblock; eauto.
-  eapply Ple_trans; eauto. eapply external_call_nextblock; eauto.
+  eapply Ple_trans; eauto. eapply builtin_call_nextblock; eauto.
+  eapply Ple_trans; eauto. eapply builtin_call_nextblock; eauto.
 
 (* sequence *)
   econstructor; split. apply plus_one. econstructor.

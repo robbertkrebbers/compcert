@@ -98,7 +98,7 @@ Inductive statement : Type :=
   | Sassign : expr -> expr -> statement (**r assignment [lvalue = rvalue] *)
   | Sset : ident -> expr -> statement   (**r assignment [tempvar = rvalue] *)
   | Scall: option ident -> expr -> list expr -> statement (**r function call *)
-  | Sbuiltin: option ident -> external_function -> typelist -> list expr -> statement (**r builtin invocation *)
+  | Sbuiltin: option ident -> builtin -> typelist -> list expr -> statement (**r builtin invocation *)
   | Ssequence : statement -> statement -> statement  (**r sequence *)
   | Sifthenelse : expr  -> statement -> statement -> statement (**r conditional *)
   | Sloop: statement -> statement -> statement (**r infinite loop *)
@@ -149,7 +149,7 @@ Definition var_names (vars: list(ident * type)) : list ident :=
 
 Inductive fundef : Type :=
   | Internal: function -> fundef
-  | External: external_function -> typelist -> type -> calling_convention -> fundef.
+  | External: external_function -> typelist -> type -> fundef.
 
 (** The type of a function definition. *)
 
@@ -159,7 +159,7 @@ Definition type_of_function (f: function) : type :=
 Definition type_of_fundef (f: fundef) : type :=
   match f with
   | Internal fd => type_of_function fd
-  | External id args res cc => Tfunction args res cc
+  | External ef args res => Tfunction args res (sig_cc (ef_sig ef))
   end.
 
 (** ** Programs *)
@@ -558,7 +558,7 @@ Inductive step: state -> trace -> state -> Prop :=
 
   | step_builtin:   forall f optid ef tyargs al k e le m vargs t vres m',
       eval_exprlist e le m al tyargs vargs ->
-      external_call ef ge vargs m t vres m' ->
+      builtin_call ef ge vargs m t vres m' ->
       step (State f (Sbuiltin optid ef tyargs al) k e le m)
          t (State f Sskip k e (set_opttemp optid vres le) m')
 
@@ -641,9 +641,9 @@ Inductive step: state -> trace -> state -> Prop :=
       step (Callstate (Internal f) vargs k m)
         E0 (State f f.(fn_body) k e le m1)
 
-  | step_external_function: forall ef targs tres cconv vargs k m vres t m',
+  | step_external_function: forall ef targs tres vargs k m vres t m',
       external_call ef ge vargs m t vres m' ->
-      step (Callstate (External ef targs tres cconv) vargs k m)
+      step (Callstate (External ef targs tres) vargs k m)
          t (Returnstate vres k m')
 
   | step_returnstate: forall v optid f e le k m,
@@ -718,14 +718,13 @@ Proof.
     intros. subst. inv H0. exists s1; auto.
   inversion H; subst; auto.
   (* builtin *)
-  exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]]. 
+  exploit builtin_call_receptive; eauto. intros [vres2 [m2 EC2]]. 
   econstructor; econstructor; eauto.
   (* external *)
   exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]]. 
   exists (Returnstate vres2 k m2). econstructor; eauto.
 (* trace length *)
   red; intros. inv H; simpl; try omega.
-  eapply external_call_trace_length; eauto.
+  eapply builtin_call_trace_length; eauto.
   eapply external_call_trace_length; eauto.
 Qed.
-

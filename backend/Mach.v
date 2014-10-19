@@ -60,8 +60,8 @@ Inductive instruction: Type :=
   | Mstore: memory_chunk -> addressing -> list mreg -> mreg -> instruction
   | Mcall: signature -> mreg + ident -> instruction
   | Mtailcall: signature -> mreg + ident -> instruction
-  | Mbuiltin: external_function -> list mreg -> list mreg -> instruction
-  | Mannot: external_function -> list annot_param -> instruction
+  | Mbuiltin: builtin -> list mreg -> list mreg -> instruction
+  | Mannot: builtin -> list annot_param -> instruction
   | Mlabel: label -> instruction
   | Mgoto: label -> instruction
   | Mcond: condition -> list mreg -> label -> instruction
@@ -346,14 +346,14 @@ Inductive step: state -> trace -> state -> Prop :=
         E0 (Callstate s f' rs m')
   | exec_Mbuiltin:
       forall s f sp rs m ef args res b t vl rs' m',
-      external_call' ef ge rs##args m t vl m' ->
+      builtin_call' ef ge rs##args m t vl m' ->
       rs' = set_regs res vl (undef_regs (destroyed_by_builtin ef) rs) ->
       step (State s f sp (Mbuiltin ef args res :: b) rs m)
          t (State s f sp b rs' m')
   | exec_Mannot:
       forall s f sp rs m ef args b vargs t v m',
       annot_arguments rs m sp args vargs ->
-      external_call' ef ge vargs m t v m' ->
+      builtin_call' ef ge vargs m t v m' ->
       step (State s f sp (Mannot ef args :: b) rs m)
          t (State s f sp b rs m')
   | exec_Mgoto:

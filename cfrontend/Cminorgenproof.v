@@ -2020,22 +2020,22 @@ Proof.
   exploit transl_exprlist_correct; eauto.
   intros [tvargs [EVAL2 VINJ2]].
   exploit match_callstack_match_globalenvs; eauto. intros [hi' MG].
-  exploit external_call_mem_inject; eauto. 
+  exploit builtin_call_mem_inject; eauto. 
   eapply inj_preserves_globals; eauto.
   intros [f' [vres' [tm' [EC [VINJ [MINJ' [UNMAPPED [OUTOFREACH [INCR SEPARATED]]]]]]]]].
   left; econstructor; split.
   apply plus_one. econstructor. eauto. 
-  eapply external_call_symbols_preserved; eauto.
+  eapply builtin_call_symbols_preserved; eauto.
   exact symbols_preserved. eexact varinfo_preserved.
   assert (MCS': match_callstack f' m' tm'
                  (Frame cenv tfn e le te sp lo hi :: cs)
                  (Mem.nextblock m') (Mem.nextblock tm')).
     apply match_callstack_incr_bound with (Mem.nextblock m) (Mem.nextblock tm).
     eapply match_callstack_external_call; eauto.
-    intros. eapply external_call_max_perm; eauto.
+    intros. eapply builtin_call_max_perm; eauto.
     xomega. xomega. 
-    eapply external_call_nextblock; eauto.
-    eapply external_call_nextblock; eauto.
+    eapply builtin_call_nextblock; eauto.
+    eapply builtin_call_nextblock; eauto.
   econstructor; eauto.
 Opaque PTree.set.
   unfold set_optvar. destruct optid; simpl. 
@@ -2253,4 +2253,3 @@ Proof.
 Qed.
 
 End TRANSLATION.
-

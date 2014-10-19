@@ -36,6 +36,15 @@ let mkef sg toks =
   match toks with
   | [EFT_tok "extern"; EFT_string s] ->
       EF_external(intern_string s, sg)
+  | [EFT_tok "malloc"] ->
+      EF_malloc
+  | [EFT_tok "free"] ->
+      EF_free
+  | _ ->
+      raise Parsing.Parse_error
+
+let mkbuiltin sg toks =
+  match toks with
   | [EFT_tok "builtin"; EFT_string s] ->
       EF_builtin(intern_string s, sg)
   | [EFT_tok "volatile"; EFT_tok "load"; EFT_chunk c] ->
@@ -48,10 +57,6 @@ let mkef sg toks =
   | [EFT_tok "volatile"; EFT_tok "store"; EFT_chunk c; 
      EFT_tok "global"; EFT_string s; EFT_int n] ->
       EF_vstore_global(c, intern_string s, coqint_of_camlint n)
-  | [EFT_tok "malloc"] ->
-      EF_malloc
-  | [EFT_tok "free"] ->
-      EF_free
   | [EFT_tok "memcpy"; EFT_tok "size"; EFT_int sz; EFT_tok "align"; EFT_int al] ->
       EF_memcpy(Z.of_sint32 sz, Z.of_sint32 al)
   | [EFT_tok "annot"; EFT_string txt] ->
@@ -64,7 +69,7 @@ let mkef sg toks =
       EF_inline_asm(intern_string txt)
   | _ ->
       raise Parsing.Parse_error
-
+   
 (** Naming function calls in expressions *)
 
 type rexpr =
@@ -105,7 +110,7 @@ let rec convert_rexpr = function
       convert_accu := Scall(Some t, sg, c1, cl) :: !convert_accu;
       Evar t
   | Rbuiltin(sg, pef, el) ->
-      let ef = mkef sg pef in
+      let ef = mkbuiltin sg pef in
       let cl = convert_rexpr_list el in
       let t = mktemp() in
       convert_accu := Sbuiltin(Some t, ef, cl) :: !convert_accu;
@@ -131,7 +136,7 @@ let mkeval e =
       let cl = convert_rexpr_list el in
       prepend_seq !convert_accu (Scall(None, sg, c1, cl))
   | Rbuiltin(sg, pef, el) -> 
-      let ef = mkef sg pef in
+      let ef = mkbuiltin sg pef in
       let cl = convert_rexpr_list el in
       prepend_seq !convert_accu (Sbuiltin(None, ef, cl))
   | _ ->
@@ -146,7 +151,7 @@ let mkassign id e =
       let cl = convert_rexpr_list el in
       prepend_seq !convert_accu (Scall(Some id, sg, c1, cl))
   | Rbuiltin(sg, pef, el) ->
-      let ef = mkef sg pef in
+      let ef = mkbuiltin sg pef in
       let cl = convert_rexpr_list el in
       prepend_seq !convert_accu (Sbuiltin(Some id, ef, cl))
   | _ ->

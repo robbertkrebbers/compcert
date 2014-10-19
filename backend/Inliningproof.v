@@ -1001,28 +1001,28 @@ Proof.
 
 (* builtin *)
   exploit tr_funbody_inv; eauto. intros TR; inv TR.
-  exploit external_call_mem_inject; eauto. 
+  exploit builtin_call_mem_inject; eauto. 
     eapply match_stacks_inside_globals; eauto.
     instantiate (1 := rs'##(sregs ctx args)). eapply agree_val_regs; eauto. 
   intros [F1 [v1 [m1' [A [B [C [D [E [J K]]]]]]]]].
   left; econstructor; split.
   eapply plus_one. eapply exec_Ibuiltin; eauto. 
-    eapply external_call_symbols_preserved; eauto. 
+    eapply builtin_call_symbols_preserved; eauto. 
     exact symbols_preserved. exact varinfo_preserved.
   econstructor.
     eapply match_stacks_inside_set_reg. 
     eapply match_stacks_inside_extcall with (F1 := F) (F2 := F1) (m1 := m) (m1' := m'0); eauto.
-    intros; eapply external_call_max_perm; eauto. 
-    intros; eapply external_call_max_perm; eauto. 
+    intros; eapply builtin_call_max_perm; eauto. 
+    intros; eapply builtin_call_max_perm; eauto. 
   auto. 
   eapply agree_set_reg. eapply agree_regs_incr; eauto. auto. auto. 
   apply J; auto.
   auto. 
-  eapply external_call_valid_block; eauto. 
+  eapply builtin_call_valid_block; eauto. 
   eapply range_private_extcall; eauto. 
-    intros; eapply external_call_max_perm; eauto. 
+    intros; eapply builtin_call_max_perm; eauto. 
   auto. 
-  intros. apply SSZ2. eapply external_call_max_perm; eauto. 
+  intros. apply SSZ2. eapply builtin_call_max_perm; eauto. 
 
 (* cond *)
   exploit tr_funbody_inv; eauto. intros TR; inv TR.

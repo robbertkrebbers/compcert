@@ -1098,12 +1098,12 @@ Proof.
   apply regs_lessdef_regs; auto.
 
 - (* Ibuiltin *)
-  exploit external_call_mem_extends; eauto.
+  exploit builtin_call_mem_extends; eauto.
   instantiate (1 := rs'##args). apply regs_lessdef_regs; auto.
   intros (v' & m1' & P & Q & R & S).
   econstructor; split.
   eapply exec_Ibuiltin; eauto. 
-  eapply external_call_symbols_preserved; eauto.
+  eapply builtin_call_symbols_preserved; eauto.
   exact symbols_preserved. exact varinfo_preserved.
   econstructor; eauto.
   eapply analysis_correct_1; eauto. simpl; auto.
@@ -1117,14 +1117,11 @@ Proof.
                          (set_unknown (kill_all_loads approx#pc) res)).
   { exists valu. apply set_unknown_holds. eapply kill_all_loads_hold; eauto. }
   destruct ef.
-  + apply CASE1.
   + apply CASE3. 
   + apply CASE2; inv H0; auto.
   + apply CASE3.
   + apply CASE2; inv H0; auto. 
   + apply CASE3; auto.
-  + apply CASE1.
-  + apply CASE1.
   + destruct args as [ | rdst args]; auto.
     destruct args as [ | rsrc args]; auto. 
     destruct args; auto.
@@ -1138,6 +1135,7 @@ Proof.
   + apply CASE2; inv H0; auto.
   + apply CASE2; inv H0; auto.
   + apply CASE1.
+  + apply CASE3.
 * apply set_reg_lessdef; auto.
 
 - (* Icond *)

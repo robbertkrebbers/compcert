@@ -320,7 +320,7 @@ Proof.
 (* tailcall *)
   destruct b0; MonadInv. destruct i; MonadInv; UseParsingLemmas. econstructor; eauto.
 (* builtin *) 
-  destruct b0; MonadInv. destruct i; MonadInv; UseParsingLemmas.
+  destruct b1; MonadInv. destruct i; MonadInv; UseParsingLemmas.
   econstructor; eauto.
   destruct ef; inv H. econstructor; eauto. 
 (* cond *)
@@ -1997,14 +1997,14 @@ Proof.
 (* builtin *)
 - assert (WTRS': wt_regset env (rs#res <- v)) by (eapply wt_exec_Ibuiltin; eauto).
   exploit (exec_moves mv1); eauto. intros [ls1 [A1 B1]]. 
-  exploit external_call_mem_extends; eauto.
+  exploit builtin_call_mem_extends; eauto.
   eapply add_equations_args_lessdef; eauto.
   inv WTI. rewrite <- H4. apply wt_regset_list; auto. 
   intros [v' [m'' [F [G [J K]]]]].
   assert (E: map ls1 (map R args') = reglist ls1 args').
   { unfold reglist. rewrite list_map_compose. auto. }
   rewrite E in F. clear E.
-  set (vl' := encode_long (sig_res (ef_sig ef)) v').
+  set (vl' := encode_long (sig_res (builtin_sig ef)) v').
   set (ls2 := Locmap.setlist (map R res') vl' (undef_regs (destroyed_by_builtin ef) ls1)).
   assert (satisf (rs#res <- v) ls2 e0).
   { eapply parallel_assignment_satisf_2; eauto. 
@@ -2015,7 +2015,7 @@ Proof.
   eapply plus_left. econstructor; eauto. 
   eapply star_trans. eexact A1. 
   eapply star_left. econstructor. 
-  econstructor. unfold reglist. eapply external_call_symbols_preserved; eauto. 
+  econstructor. unfold reglist. eapply builtin_call_symbols_preserved; eauto. 
   exact symbols_preserved. exact varinfo_preserved.
   instantiate (1 := vl'); auto. 
   instantiate (1 := ls2); auto. 
@@ -2028,7 +2028,7 @@ Proof.
  
 (* annot *)
 - exploit (exec_moves mv); eauto. intros [ls1 [A1 B1]]. 
-  exploit external_call_mem_extends; eauto. eapply add_equations_args_lessdef; eauto.
+  exploit builtin_call_mem_extends; eauto. eapply add_equations_args_lessdef; eauto.
   inv WTI. simpl in H4. rewrite <- H4. apply wt_regset_list; auto. 
   intros [v' [m'' [F [G [J K]]]]].
   assert (v = Vundef). red in H0; inv H0. auto.
@@ -2036,7 +2036,7 @@ Proof.
   eapply plus_left. econstructor; eauto. 
   eapply star_trans. eexact A1. 
   eapply star_two. econstructor.
-  eapply external_call_symbols_preserved' with (ge1 := ge).
+  eapply builtin_call_symbols_preserved' with (ge1 := ge).
   econstructor; eauto. 
   exact symbols_preserved. exact varinfo_preserved.
   eauto. constructor. eauto. eauto. traceEq.

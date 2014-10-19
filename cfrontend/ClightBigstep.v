@@ -100,7 +100,7 @@ Inductive exec_stmt: env -> temp_env -> mem -> statement -> trace -> temp_env ->
                 t (set_opttemp optid vres le) m' Out_normal
   | exec_Sbuiltin:   forall e le m optid ef al tyargs vargs t m' vres,
       eval_exprlist ge e le m al tyargs vargs ->
-      external_call ef ge vargs m t vres m' ->
+      builtin_call ef ge vargs m t vres m' ->
       exec_stmt e le m (Sbuiltin optid ef tyargs al)
                 t (set_opttemp optid vres le) m' Out_normal
   | exec_Sseq_1:   forall e le m s1 s2 t1 le1 m1 t2 le2 m2 out,
@@ -171,9 +171,9 @@ with eval_funcall: mem -> fundef -> list val -> trace -> mem -> val -> Prop :=
       outcome_result_value out f.(fn_return) vres ->
       Mem.free_list m3 (blocks_of_env e) = Some m4 ->
       eval_funcall m (Internal f) vargs t m4 vres
-  | eval_funcall_external: forall m ef targs tres cconv vargs t vres m',
+  | eval_funcall_external: forall m ef targs tres vargs t vres m',
       external_call ef ge vargs m t vres m' ->
-      eval_funcall m (External ef targs tres cconv) vargs t m' vres.
+      eval_funcall m (External ef targs tres) vargs t m' vres.
 
 Scheme exec_stmt_ind2 := Minimality for exec_stmt Sort Prop
   with eval_funcall_ind2 := Minimality for eval_funcall Sort Prop.

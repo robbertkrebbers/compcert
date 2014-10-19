@@ -62,7 +62,7 @@ Inductive stmt : Type :=
   | Sset : ident -> expr -> stmt
   | Sstore : memory_chunk -> expr -> expr -> stmt
   | Scall : option ident -> signature -> expr -> list expr -> stmt
-  | Sbuiltin : option ident -> external_function -> list expr -> stmt
+  | Sbuiltin : option ident -> builtin -> list expr -> stmt
   | Sseq: stmt -> stmt -> stmt
   | Sifthenelse: expr -> stmt -> stmt -> stmt
   | Sloop: stmt -> stmt
@@ -392,7 +392,7 @@ Inductive step: state -> trace -> state -> Prop :=
 
   | step_builtin: forall f optid ef bl k e le m vargs t vres m',
       eval_exprlist e le m bl vargs ->
-      external_call ef ge vargs m t vres m' ->
+      builtin_call ef ge vargs m t vres m' ->
       step (State f (Sbuiltin optid ef bl) k e le m)
          t (State f Sskip k e (Cminor.set_optvar optid vres le) m')
 

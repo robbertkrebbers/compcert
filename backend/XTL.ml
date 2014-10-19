@@ -34,7 +34,7 @@ type instruction =
   | Xstore of memory_chunk * addressing * var list * var
   | Xcall of signature * (var, ident) sum * var list * var list
   | Xtailcall of signature * (var, ident) sum * var list
-  | Xbuiltin of external_function * var list * var list
+  | Xbuiltin of builtin * var list * var list
   | Xbranch of node
   | Xcond of condition * var list * node * node
   | Xjumptable of var * node list
@@ -150,7 +150,7 @@ let type_instr = function
   | Xtailcall(sg, Coq_inr id, args) ->
       ()
   | Xbuiltin(ef, args, res) ->
-      let sg = ef_sig ef in
+      let sg = builtin_sig ef in
       set_vars_type args sg.sig_args;
       set_vars_type res (Events.proj_sig_res' sg)
   | Xbranch s ->

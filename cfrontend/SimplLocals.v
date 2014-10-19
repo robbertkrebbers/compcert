@@ -243,10 +243,8 @@ Definition transf_function (f: function) : res function :=
 Definition transf_fundef (fd: fundef) : res fundef :=
   match fd with
   | Internal f => do tf <- transf_function f; OK (Internal tf)
-  | External ef targs tres cconv => OK (External ef targs tres cconv)
+  | External ef targs tres => OK (External ef targs tres)
   end.
 
 Definition transf_program (p: program) : res program :=
   AST.transform_partial_program transf_fundef p.
-
-

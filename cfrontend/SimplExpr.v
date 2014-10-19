@@ -517,8 +517,8 @@ Definition transl_fundef (fd: Csyntax.fundef) : mon fundef :=
   match fd with
   | Csyntax.Internal f =>
       do tf <- transl_function f; ret (Internal tf)
-  | Csyntax.External ef targs tres cconv =>
-      ret (External ef targs tres cconv)
+  | Csyntax.External ef targs tres =>
+      ret (External ef targs tres)
   end.
 
 Local Open Scope error_monad_scope.

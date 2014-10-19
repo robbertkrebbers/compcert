@@ -59,7 +59,7 @@ Inductive builtin_kind : Type :=
   | Builtin_annot_val (av: aval)
   | Builtin_default.
 
-Definition classify_builtin (ef: external_function) (args: list reg) (ae: aenv) :=
+Definition classify_builtin (ef: builtin) (args: list reg) (ae: aenv) :=
   match ef, args with
   | EF_vload chunk, a1::nil => Builtin_vload chunk (areg ae a1)
   | EF_vload_global chunk id ofs, nil => Builtin_vload chunk (Ptr (Gl id ofs))
@@ -71,7 +71,7 @@ Definition classify_builtin (ef: external_function) (args: list reg) (ae: aenv) 
   | _, _ => Builtin_default
   end.
 
-Definition transfer_builtin (ae: aenv) (am: amem) (rm: romem) (ef: external_function) (args: list reg) (res: reg) :=
+Definition transfer_builtin (ae: aenv) (am: amem) (rm: romem) (ef: builtin) (args: list reg) (res: reg) :=
   match classify_builtin ef args ae with
   | Builtin_vload chunk aaddr => 
       let a :=
@@ -275,7 +275,7 @@ Lemma classify_builtin_sound:
   forall bc e ae ef (ge: genv) args m t res m',
   ematch bc e ae ->
   genv_match bc ge ->
-  external_call ef ge e##args m t res m' ->
+  builtin_call ef ge e##args m t res m' ->
   match classify_builtin ef args ae with
   | Builtin_vload chunk aaddr =>
       exists addr,
@@ -838,8 +838,9 @@ Qed.
 (** Construction 6: external call *)
 
 Theorem external_call_match:
-  forall ef (ge: genv) vargs m t vres m' bc rm am,
-  external_call ef ge vargs m t vres m' ->
+  forall sem sg (ge: genv) vargs m t vres m' bc rm am,
+  extcall_properties sem sg ->
+  sem _ _ ge vargs m t vres m' ->
   genv_match bc ge ->
   (forall v, In v vargs -> vmatch bc v Vtop) ->
   romatch bc m rm ->
@@ -855,9 +856,9 @@ Theorem external_call_match:
   /\ bc_nostack bc'
   /\ (forall b ofs n, Mem.valid_block m b -> bc b = BCinvalid -> Mem.loadbytes m' b ofs n = Mem.loadbytes m b ofs n).
 Proof.
-  intros until am; intros EC GENV ARGS RO MM NOSTACK.
+  intros until am; intros SEM EC GENV ARGS RO MM NOSTACK.
   (* Part 1: using ec_mem_inject *)
-  exploit (@external_call_mem_inject ef _ _ ge vargs m t vres m' (inj_of_bc bc) m vargs).
+  exploit (@ec_mem_inject sem sg SEM _ _ ge vargs m t vres m' (inj_of_bc bc) m vargs).
   apply inj_of_bc_preserves_globals; auto. 
   exact EC.
   eapply mmatch_inj; eauto. eapply mmatch_below; eauto.
@@ -943,10 +944,10 @@ Proof.
   exploit RO; eauto. intros (R & P & Q).
   split; auto.
   split. apply bmatch_incr with bc; auto. apply bmatch_inv with m; auto.
-  intros. eapply Mem.loadbytes_unchanged_on_1. eapply external_call_readonly; eauto. 
+  intros. eapply Mem.loadbytes_unchanged_on_1. eapply ec_readonly; eauto. 
   auto. intros; red. apply Q. 
   intros; red; intros; elim (Q ofs). 
-  eapply external_call_max_perm with (m2 := m'); eauto.
+  eapply ec_max_perm with (m2 := m'); eauto.
   destruct (j' b); congruence.
 - (* mmatch top *)
   constructor; simpl; intros.
@@ -955,9 +956,9 @@ Proof.
   + apply SMTOP; auto.
   + apply SMTOP; auto. 
   + red; simpl; intros. destruct (plt b (Mem.nextblock m)). 
-    eapply Plt_le_trans. eauto. eapply external_call_nextblock; eauto. 
+    eapply Plt_le_trans. eauto. eapply ec_nextblock; eauto.
     destruct (j' b) as [[bx deltax] | ] eqn:J'. 
-    eapply Mem.valid_block_inject_1; eauto. 
+    eapply Mem.valid_block_inject_1; eauto.
     congruence.
 - (* nostack *)
   red; simpl; intros. destruct (plt b (Mem.nextblock m)). 
@@ -1302,7 +1303,7 @@ Proof.
   InvBooleans. rewrite forallb_forall in H2.
   exploit hide_stack; eauto. apply pincl_ge; auto.
   intros (bc1 & A & B & C & D & E & F & G).
-  exploit external_call_match; eauto. 
+  exploit external_call_match; eauto using builtin_call_spec. 
   intros. exploit list_in_map_inv; eauto. intros (r & P & Q). subst v0. 
   eapply D; eauto with va. apply vpincl_ge. apply H2; auto. 
   intros (bc2 & J & K & L & M & N & O & P & Q).
@@ -1312,7 +1313,7 @@ Proof.
   intros. rewrite K; auto. rewrite C; auto.
   apply bmatch_inv with m. eapply mmatch_stack; eauto. 
   intros. apply Q; auto.
-  eapply external_call_nextblock; eauto. 
+  eapply builtin_call_nextblock; eauto. 
   intros (bc3 & U & V & W & X & Y & Z & AA).
   eapply sound_succ_state with (bc := bc3); eauto. simpl; auto. 
   apply ematch_update; auto.
@@ -1324,14 +1325,14 @@ Proof.
 * (* public builtin call *)
   exploit anonymize_stack; eauto. 
   intros (bc1 & A & B & C & D & E & F & G).
-  exploit external_call_match; eauto. 
+  exploit external_call_match; eauto using builtin_call_spec.
   intros. exploit list_in_map_inv; eauto. intros (r & P & Q). subst v0. eapply D; eauto with va.
   intros (bc2 & J & K & L & M & N & O & P & Q).
   exploit (return_from_public_call bc bc2); eauto.
   eapply mmatch_below; eauto.
   rewrite K; auto.
   intros. rewrite K; auto. rewrite C; auto.
-  eapply external_call_nextblock; eauto. 
+  eapply builtin_call_nextblock; eauto. 
   intros (bc3 & U & V & W & X & Y & Z & AA).
   eapply sound_succ_state with (bc := bc3); eauto. simpl; auto. 
   apply ematch_update; auto.
@@ -1377,7 +1378,7 @@ Proof.
   intros. apply F. erewrite Mem.alloc_result by eauto. auto.
 
 - (* external function *)
-  exploit external_call_match; eauto with va.
+  exploit external_call_match; eauto using external_call_spec with va.
   intros (bc' & A & B & C & D & E & F & G & K).
   econstructor; eauto. 
   apply sound_stack_new_bound with (Mem.nextblock m).
@@ -1815,8 +1816,3 @@ Proof.
   unfold aaddressing. rewrite AN. apply match_aptr_of_aval. 
   eapply eval_static_addressing_sound; eauto with va.
 Qed.
-
-
-  
-
-

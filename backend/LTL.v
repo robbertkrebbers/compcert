@@ -44,8 +44,8 @@ Inductive instruction: Type :=
   | Lstore (chunk: memory_chunk) (addr: addressing) (args: list mreg) (src: mreg)
   | Lcall (sg: signature) (ros: mreg + ident)
   | Ltailcall (sg: signature) (ros: mreg + ident)
-  | Lbuiltin (ef: external_function) (args: list mreg) (res: list mreg)
-  | Lannot (ef: external_function) (args: list loc)
+  | Lbuiltin (ef: builtin) (args: list mreg) (res: list mreg)
+  | Lannot (ef: builtin) (args: list loc)
   | Lbranch (s: node)
   | Lcond (cond: condition) (args: list mreg) (s1 s2: node)
   | Ljumptable (arg: mreg) (tbl: list node)
@@ -240,12 +240,12 @@ Inductive step: state -> trace -> state -> Prop :=
       step (Block s f (Vptr sp Int.zero) (Ltailcall sig ros :: bb) rs m)
         E0 (Callstate s fd rs' m')
   | exec_Lbuiltin: forall s f sp ef args res bb rs m t vl rs' m',
-      external_call' ef ge (reglist rs args) m t vl m' ->
+      builtin_call' ef ge (reglist rs args) m t vl m' ->
       rs' = Locmap.setlist (map R res) vl (undef_regs (destroyed_by_builtin ef) rs) ->
       step (Block s f sp (Lbuiltin ef args res :: bb) rs m)
          t (Block s f sp bb rs' m')
   | exec_Lannot: forall s f sp ef args bb rs m t vl m',
-      external_call' ef ge (map rs args) m t vl m' ->
+      builtin_call' ef ge (map rs args) m t vl m' ->
       step (Block s f sp (Lannot ef args :: bb) rs m)
          t (Block s f sp bb rs m')
   | exec_Lbranch: forall s f sp pc bb rs m,

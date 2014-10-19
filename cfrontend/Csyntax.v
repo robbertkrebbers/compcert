@@ -57,7 +57,7 @@ Inductive expr : Type :=
   | Ecomma (r1 r2: expr) (ty: type)       (**r sequence expression [r1, r2] *)
   | Ecall (r1: expr) (rargs: exprlist) (ty: type)
                                              (**r function call [r1(rargs)] *)
-  | Ebuiltin (ef: external_function) (tyargs: typelist) (rargs: exprlist) (ty: type)
+  | Ebuiltin (ef: builtin) (tyargs: typelist) (rargs: exprlist) (ty: type)
                                                  (**r builtin function call *)
   | Eloc (b: block) (ofs: int) (ty: type)
                        (**r memory location, result of evaluating a l-value *)
@@ -192,7 +192,7 @@ Definition var_names (vars: list(ident * type)) : list ident :=
 
 Inductive fundef : Type :=
   | Internal: function -> fundef
-  | External: external_function -> typelist -> type -> calling_convention -> fundef.
+  | External: external_function -> typelist -> type -> fundef.
 
 (** The type of a function definition. *)
 
@@ -202,7 +202,7 @@ Definition type_of_function (f: function) : type :=
 Definition type_of_fundef (f: fundef) : type :=
   match f with
   | Internal fd => type_of_function fd
-  | External id args res cc => Tfunction args res cc
+  | External ef args res => Tfunction args res (sig_cc (ef_sig ef))
   end.
 
 (** ** Programs *)

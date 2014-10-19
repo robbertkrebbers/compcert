@@ -74,7 +74,7 @@ Definition wt_instr (i: instruction) : bool :=
   | Ltailcall sg ros =>
       zeq (size_arguments sg) 0
   | Lbuiltin ef args res =>
-      subtype_list (proj_sig_res' (ef_sig ef)) (map mreg_type res) 
+      subtype_list (proj_sig_res' (builtin_sig ef)) (map mreg_type res) 
   | Lannot ef args =>
       forallb loc_valid args
   | _ =>
@@ -292,7 +292,7 @@ Proof.
   simpl in *; InvBooleans.
   econstructor; eauto.
   apply wt_setlist. 
-  eapply Val.has_subtype_list; eauto. eapply external_call_well_typed'; eauto. 
+  eapply Val.has_subtype_list; eauto. eapply builtin_call_well_typed'; eauto. 
   apply wt_undef_regs; auto.
 - (* annot *)
   simpl in *; InvBooleans.

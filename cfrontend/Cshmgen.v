@@ -635,8 +635,8 @@ Definition transl_fundef (f: Clight.fundef) : res fundef :=
   match f with
   | Clight.Internal g => 
       do tg <- transl_function g; OK(AST.Internal tg)
-  | Clight.External ef args res cconv =>
-      if signature_eq (ef_sig ef) (signature_of_type args res cconv)
+  | Clight.External ef args res =>
+      if signature_eq (ef_sig ef) (signature_of_type args res (sig_cc (ef_sig ef)))
       then OK(AST.External ef)
       else Error(msg "Cshmgen.transl_fundef: wrong external signature")
   end.

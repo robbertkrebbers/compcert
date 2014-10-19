@@ -49,7 +49,7 @@ Proof.
   monadInv H. monadInv EQ. simpl. inversion H0.    
   unfold signature_of_function, signature_of_type.
   f_equal. apply transl_params_types.
-  destruct (signature_eq (ef_sig e) (signature_of_type t t0 c)); inv H.
+  destruct (signature_eq (ef_sig e) (signature_of_type t t0 _)); inv H.
   simpl. congruence.
 Qed.
 
@@ -1284,7 +1284,7 @@ Proof.
   econstructor; split.
   apply plus_one. econstructor. 
   eapply transl_arglist_correct; eauto. 
-  eapply external_call_symbols_preserved_2; eauto.
+  eapply builtin_call_symbols_preserved_2; eauto.
   exact symbols_preserved.
   eexact (Genv.find_var_info_transf_partial2 transl_fundef transl_globvar _ TRANSL).
   eexact (Genv.find_var_info_rev_transf_partial2 transl_fundef transl_globvar _ TRANSL).
@@ -1461,7 +1461,7 @@ Proof.
 
 (* external function *)
   simpl in TR. 
-  destruct (signature_eq (ef_sig ef) (signature_of_type targs tres cconv)); inv TR.
+  destruct (signature_eq (ef_sig ef) (signature_of_type targs tres _)); inv TR.
   exploit match_cont_is_call_cont; eauto. intros [A B].
   econstructor; split.
   apply plus_one. constructor. eauto. 

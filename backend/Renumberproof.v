@@ -193,7 +193,7 @@ Proof.
 (* builtin *)
   econstructor; split.
   eapply exec_Ibuiltin; eauto.
-    eapply external_call_symbols_preserved; eauto.
+    eapply builtin_call_symbols_preserved; eauto.
     exact symbols_preserved. exact varinfo_preserved.
   constructor; auto. eapply reach_succ; eauto. simpl; auto.
 (* cond *)
@@ -258,10 +258,3 @@ Proof.
 Qed.
 
 End PRESERVATION.
-
-
-
- 
-
-  
-

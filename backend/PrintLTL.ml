@@ -10,7 +10,7 @@
 (*                                                                     *)
 (* *********************************************************************)
 
-(** Pretty-printers for RTL code *)
+(** Pretty-printers for LTL code *)
 
 open Printf
 open Camlcoq
@@ -79,10 +79,10 @@ let print_instruction pp succ = function
       fprintf pp "tailcall %a" ros fn
   | Lbuiltin(ef, args, res) ->
       fprintf pp "%a = %s(%a)"
-        mregs res (name_of_external ef) mregs args
+        mregs res (name_of_builtin ef) mregs args
   | Lannot(ef, args) ->
       fprintf pp "%s(%a)"
-        (name_of_external ef) locs args
+        (name_of_builtin ef) locs args
   | Lbranch s ->
       print_succ pp s succ
   | Lcond(cond, args, s1, s2) ->

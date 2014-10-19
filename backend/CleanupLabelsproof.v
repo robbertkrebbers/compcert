@@ -284,12 +284,12 @@ Proof.
   econstructor; eauto.
 (* Lbuiltin *)
   left; econstructor; split.
-  econstructor; eauto. eapply external_call_symbols_preserved'; eauto.
+  econstructor; eauto. eapply builtin_call_symbols_preserved'; eauto.
   exact symbols_preserved.  exact varinfo_preserved.
   econstructor; eauto with coqlib.
 (* Lannot *)
   left; econstructor; split.
-  econstructor; eauto. eapply external_call_symbols_preserved'; eauto.
+  econstructor; eauto. eapply builtin_call_symbols_preserved'; eauto.
   exact symbols_preserved.  exact varinfo_preserved.
   econstructor; eauto with coqlib.
 (* Llabel *)
@@ -369,4 +369,3 @@ Proof.
 Qed.
 
 End CLEANUP.
-

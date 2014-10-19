@@ -57,12 +57,6 @@ Extract Constant Iteration.GenIter.iterate =>
 
 (* Selection *)
 
-Extract Constant SelectLong.get_helper =>
-  "fun ge s sg ->
-     Errors.OK (Camlcoq.intern_string (Camlcoq.camlstring_of_coqstring s))".
-Extract Constant SelectLong.get_builtin =>
-  "fun s sg ->
-     Errors.OK (Camlcoq.intern_string (Camlcoq.camlstring_of_coqstring s))".
 Extract Constant Selection.compile_switch => "Switchaux.compile_switch".
 
 (* RTLgen *)
@@ -158,5 +152,5 @@ Separate Extraction
    RTL.instr_defs RTL.instr_uses
    Machregs.mregs_for_operation Machregs.mregs_for_builtin
    Machregs.two_address_op Machregs.is_stack_reg
-   AST.signature_main
+   AST.signature_main AST.i64_builtin_name
    Parser.translation_unit_file.

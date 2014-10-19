@@ -211,8 +211,8 @@ Inductive instruction: Type :=
   | Plabel(l: label)
   | Pallocframe(sz: Z)(ofs_ra ofs_link: int)
   | Pfreeframe(sz: Z)(ofs_ra ofs_link: int)
-  | Pbuiltin(ef: external_function)(args: list preg)(res: list preg)
-  | Pannot(ef: external_function)(args: list annot_param)
+  | Pbuiltin(ef: builtin)(args: list preg)(res: list preg)
+  | Pannot(ef: builtin)(args: list annot_param)
 
 with annot_param : Type :=
   | APreg: preg -> annot_param
@@ -830,7 +830,7 @@ Inductive step: state -> trace -> state -> Prop :=
       rs PC = Vptr b ofs ->
       Genv.find_funct_ptr ge b = Some (Internal f) ->
       find_instr (Int.unsigned ofs) f.(fn_code) = Some (Pbuiltin ef args res) ->
-      external_call' ef ge (map rs args) m t vl m' ->
+      builtin_call' ef ge (map rs args) m t vl m' ->
       rs' = nextinstr_nf 
              (set_regs res vl
                (undef_regs (map preg_of (destroyed_by_builtin ef)) rs)) ->
@@ -841,7 +841,7 @@ Inductive step: state -> trace -> state -> Prop :=
       Genv.find_funct_ptr ge b = Some (Internal f) ->
       find_instr (Int.unsigned ofs) f.(fn_code) = Some (Pannot ef args) ->
       annot_arguments rs m args vargs ->
-      external_call' ef ge vargs m t v m' ->
+      builtin_call' ef ge vargs m t v m' ->
       step (State rs m) t
            (State (nextinstr rs) m')
   | exec_step_external:
@@ -918,11 +918,11 @@ Ltac Equalities :=
   discriminate.
   discriminate.
   inv H11. 
-  exploit external_call_determ'. eexact H4. eexact H9. intros [A B].
+  exploit builtin_call_determ'. eexact H4. eexact H9. intros [A B].
   split. auto. intros. destruct B; auto. subst. auto.
   inv H12.
   assert (vargs0 = vargs) by (eapply annot_arguments_determ; eauto). subst vargs0.
-  exploit external_call_determ'. eexact H5. eexact H13. intros [A B].
+  exploit builtin_call_determ'. eexact H5. eexact H13. intros [A B].
   split. auto. intros. destruct B; auto. subst. auto.
   assert (args0 = args) by (eapply extcall_arguments_determ; eauto). subst args0.
   exploit external_call_determ'. eexact H4. eexact H9. intros [A B].
@@ -930,8 +930,8 @@ Ltac Equalities :=
 (* trace length *)
   red; intros; inv H; simpl.
   omega.
-  inv H3. eapply external_call_trace_length; eauto.
-  inv H4. eapply external_call_trace_length; eauto.
+  inv H3. eapply builtin_call_trace_length; eauto.
+  inv H4. eapply builtin_call_trace_length; eauto.
   inv H3. eapply external_call_trace_length; eauto.
 (* initial states *)
   inv H; inv H0. f_equal. congruence.
@@ -952,4 +952,3 @@ Definition data_preg (r: preg) : bool :=
   | CR _ => false
   | RA => false
   end.
-

@@ -2003,9 +2003,10 @@ Qed.
 (** Invariance by external calls. *)
 
 Lemma match_stack_change_extcall:
-  forall ec args m1 res t m2 args' m1' res' t' m2' j j',
-  external_call ec ge args m1 t res m2 ->
-  external_call ec ge args' m1' t' res' m2' ->
+  forall sem sg args m1 res t m2 args' m1' res' t' m2' j j',
+  extcall_properties sem sg ->
+  sem _ _ ge args m1 t res m2 ->
+  sem _ _ ge args' m1' t' res' m2' ->
   inject_incr j j' ->
   inject_separated j j' m1 m1' ->
   Mem.unchanged_on (loc_out_of_reach j m1) m1' m2' ->
@@ -2017,9 +2018,9 @@ Proof.
   intros. 
   eapply match_stacks_change_meminj; eauto. 
   eapply match_stacks_change_mem_extcall; eauto.
-  intros; eapply external_call_valid_block; eauto.
-  intros; eapply external_call_max_perm; eauto. red. eapply Plt_le_trans; eauto. 
-  intros; eapply external_call_valid_block; eauto.
+  intros; eapply ec_valid_block; eauto.
+  intros; eapply ec_max_perm; eauto. red. eapply Plt_le_trans; eauto. 
+  intros; eapply ec_valid_block; eauto.
 Qed.
 
 (** Invariance with respect to change of signature *)
@@ -2674,48 +2675,48 @@ Proof.
   apply zero_size_arguments_tailcall_possible. eapply wt_state_tailcall; eauto. 
 
 - (* Lbuiltin *)
-  exploit external_call_mem_inject'; eauto. 
+  exploit builtin_call_mem_inject'; eauto. 
     eapply match_stacks_preserves_globals; eauto.
     eapply agree_reglist; eauto. 
   intros [j' [res' [m1' [A [B [C [D [E [F G]]]]]]]]].
   econstructor; split.
   apply plus_one. econstructor; eauto. 
-  eapply external_call_symbols_preserved'; eauto.
+  eapply builtin_call_symbols_preserved'; eauto.
   exact symbols_preserved. exact varinfo_preserved.
   econstructor; eauto with coqlib.
   inversion H; inversion A; subst.
-  eapply match_stack_change_extcall; eauto.
+  eapply match_stack_change_extcall; eauto using builtin_call_spec.
   apply Plt_Ple. change (Mem.valid_block m sp0). eapply agree_valid_linear; eauto.
   apply Plt_Ple. change (Mem.valid_block m'0 sp'). eapply agree_valid_mach; eauto.
   apply agree_regs_set_regs; auto. apply agree_regs_undef_regs; auto. eapply agree_regs_inject_incr; eauto.
   apply agree_frame_set_regs; auto. apply agree_frame_undef_regs; auto.
   eapply agree_frame_inject_incr; eauto. 
   apply agree_frame_extcall_invariant with m m'0; auto.
-  eapply external_call_valid_block'; eauto.
-  intros. inv H; eapply external_call_max_perm; eauto. eapply agree_valid_linear; eauto.
-  eapply external_call_valid_block'; eauto.
+  eapply builtin_call_valid_block'; eauto.
+  intros. inv H; eapply builtin_call_max_perm; eauto. eapply agree_valid_linear; eauto.
+  eapply builtin_call_valid_block'; eauto.
   eapply agree_valid_mach; eauto.
 
 - (* Lannot *)
   exploit transl_annot_params_correct; eauto. eapply wt_state_annot; eauto.
   intros [vargs' [P Q]]. 
-  exploit external_call_mem_inject'; eauto. 
+  exploit builtin_call_mem_inject'; eauto. 
     eapply match_stacks_preserves_globals; eauto.
   intros [j' [res' [m1' [A [B [C [D [E [F G]]]]]]]]].
   econstructor; split.
   apply plus_one. econstructor; eauto. 
-  eapply external_call_symbols_preserved'; eauto.
+  eapply builtin_call_symbols_preserved'; eauto.
   exact symbols_preserved. exact varinfo_preserved.
   econstructor; eauto with coqlib.
-  inv H; inv A. eapply match_stack_change_extcall; eauto.
+  inv H; inv A. eapply match_stack_change_extcall; eauto using builtin_call_spec.
   apply Plt_Ple. change (Mem.valid_block m sp0). eapply agree_valid_linear; eauto.
   apply Plt_Ple. change (Mem.valid_block m'0 sp'). eapply agree_valid_mach; eauto.
   eapply agree_regs_inject_incr; eauto.
   eapply agree_frame_inject_incr; eauto. 
   apply agree_frame_extcall_invariant with m m'0; auto.
-  eapply external_call_valid_block'; eauto.
-  intros. inv H; eapply external_call_max_perm; eauto. eapply agree_valid_linear; eauto.
-  eapply external_call_valid_block'; eauto.
+  eapply builtin_call_valid_block'; eauto.
+  intros. inv H; eapply builtin_call_max_perm; eauto. eapply agree_valid_linear; eauto.
+  eapply builtin_call_valid_block'; eauto.
   eapply agree_valid_mach; eauto.
 
 - (* Llabel *)
@@ -2816,7 +2817,8 @@ Proof.
   exact symbols_preserved. exact varinfo_preserved.
   econstructor; eauto.
   apply match_stacks_change_bounds with (Mem.nextblock m) (Mem.nextblock m'0).
-  inv H0; inv A. eapply match_stack_change_extcall; eauto. apply Ple_refl. apply Ple_refl. 
+  inv H0; inv A. eapply match_stack_change_extcall; eauto using external_call_spec.
+  apply Ple_refl. apply Ple_refl. 
   eapply external_call_nextblock'; eauto.
   eapply external_call_nextblock'; eauto.
   apply agree_regs_set_regs; auto. apply agree_regs_inject_incr with j; auto. 

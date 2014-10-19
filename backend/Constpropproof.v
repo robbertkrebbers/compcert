@@ -262,9 +262,9 @@ Qed.
 
 Lemma builtin_strength_reduction_correct:
   forall ef args m t vres m',
-  external_call ef ge rs##args m t vres m' ->
+  builtin_call ef ge rs##args m t vres m' ->
   let (ef', args') := builtin_strength_reduction ae ef args in
-  external_call ef' ge rs##args' m t vres m'.
+  builtin_call ef' ge rs##args' m t vres m'.
 Proof.
   intros until m'. functional induction (builtin_strength_reduction ae ef args); intros; auto.
 + simpl in H. assert (V: vmatch bc (rs#r1) (Ptr (Gl symb n1))) by (rewrite <- e1; apply MATCH). 
@@ -504,12 +504,12 @@ Opaque builtin_strength_reduction.
   TransfInstr.
   destruct (builtin_strength_reduction ae ef args) as [ef' args'].
   intros P Q.
-  exploit external_call_mem_extends; eauto. 
+  exploit builtin_call_mem_extends; eauto. 
   instantiate (1 := rs'##args'). apply regs_lessdef_regs; auto.
   intros [v' [m2' [A [B [C D]]]]].
   left; econstructor; econstructor; split.
   eapply exec_Ibuiltin. eauto. 
-  eapply external_call_symbols_preserved; eauto.
+  eapply builtin_call_symbols_preserved; eauto.
   exact symbols_preserved. exact varinfo_preserved.
   eapply match_states_succ; eauto. simpl; auto.
   apply set_reg_lessdef; auto.

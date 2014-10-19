@@ -384,6 +384,12 @@ let convertTyp env t =
 
   in convertTyp [] t
 
+let rec convertTypList env tys =
+  match tys with
+  | [] -> Tnil
+  | ty :: rem ->
+      Tcons(convertTyp env ty, convertTypList env rem)
+        
 let rec convertTypArgs env tl el =
   match tl, el with
   | _, [] -> Tnil
@@ -476,6 +482,8 @@ let convertFloat f kind =
 (** Expressions *)
 
 let ezero = Eval(Vint(coqint_of_camlint 0l), type_int32s)
+
+let re_builtin = Str.regexp "__builtin_"
 
 let rec convertExpr env e =
   let ty = convertTyp env e.etyp in
@@ -642,15 +650,25 @@ let rec convertExpr env e =
                Econs(va_list_ptr dst, Econs(va_list_ptr src, Enil)),
                Tvoid)
 
-  | C.ECall({edesc = C.EVar {name = "printf"}}, args)
+  | C.ECall({edesc = C.EVar id}, args)
+        when Str.string_match re_builtin id.name 0 ->
+      let (tres,targs,va) = List.assoc id.name builtins.functions in
+      let cconv = convertCallconv va [] in
+      let tres' = convertTyp env tres in
+      let targs' = convertTypList env targs in
+      let sg = signature_of_type targs' tres' cconv in
+      let id' = intern_string id.name in
+      Ebuiltin(EF_builtin(id', sg), targs', convertExprList env args, tres')
+
+| C.ECall({edesc = C.EVar {name = "printf"}}, args)
     when !Clflags.option_interp ->
       let targs =
         convertTypArgs env [] args in
       let sg =
         signature_of_type targs ty {cc_vararg = true; cc_structret = false} in
-      Ebuiltin(EF_external(intern_string "printf", sg), 
+      Ebuiltin(EF_builtin(intern_string "printf", sg), 
                targs, convertExprList env args, ty)
- 
+
   | C.ECall(fn, args) ->
       if not (supported_return_type env e.etyp) then
         unsupported ("function returning a result of type " ^ string_of_type e.etyp ^ " (consider adding option -fstruct-return)");
@@ -857,8 +875,6 @@ let convertFundef loc env fd =
 
 (** External function declaration *)
 
-let re_builtin = Str.regexp "__builtin_"
-
 let convertFundecl env (sto, id, ty, optinit) =
   let (args, res, cconv) =
     match convertTyp env ty with
@@ -867,13 +883,11 @@ let convertFundecl env (sto, id, ty, optinit) =
   let id' = intern_string id.name in
   let sg = signature_of_type args res cconv in
   let ef =
-    if id.name = "malloc" then EF_malloc else
-    if id.name = "free" then EF_free else
-    if Str.string_match re_builtin id.name 0
-    && List.mem_assoc id.name builtins.functions
-    then EF_builtin(id', sg)
-    else EF_external(id', sg) in
-  (id', Gfun(External(ef, args, res, cconv)))
+    match id.name with
+    | "malloc" -> EF_malloc
+    | "free" -> EF_free
+    | _ -> EF_external(id', sg) in
+  (id', Gfun(External(ef, args, res)))
 
 (** Initializers *)
 
@@ -1061,6 +1075,43 @@ let cleanupGlobals p =
 
 (** Convert a [C.program] into a [Csyntax.program] *)
 
+let globals_for_i64 =
+  List.map (fun (id,op,tys,res) ->
+    (intern_string id, Gfun(External(EF_i64_function op, tys, res)))
+  ) [("__i64_dtos", Coq_i64_dtos,
+       Tcons(Tfloat(F64,noattr),Tnil), Tlong(Signed,noattr));
+     ("__i64_dtou", Coq_i64_dtou,
+       Tcons(Tfloat(F64,noattr),Tnil), Tlong(Unsigned,noattr));
+     ("__i64_stod", Coq_i64_stod,
+       Tcons(Tlong(Signed,noattr),Tnil), Tfloat(F64,noattr));
+     ("__i64_utod", Coq_i64_utod,
+       Tcons(Tlong(Unsigned,noattr),Tnil), Tfloat(F64,noattr));
+     ("__i64_stof", Coq_i64_stof,
+       Tcons(Tlong(Signed,noattr),Tnil), Tfloat(F32,noattr));
+     ("__i64_utof", Coq_i64_utof,
+       Tcons(Tlong(Unsigned,noattr),Tnil), Tfloat(F32,noattr));
+     ("__i64_sdiv", Coq_i64_sdiv,
+       Tcons(Tlong(Signed,noattr),Tcons(Tlong(Signed,noattr),Tnil)),
+       Tlong(Signed,noattr));
+     ("__i64_udiv", Coq_i64_udiv,
+       Tcons(Tlong(Unsigned,noattr),Tcons(Tlong(Unsigned,noattr),Tnil)),
+       Tlong(Unsigned,noattr));
+     ("__i64_smod", Coq_i64_smod,
+       Tcons(Tlong(Signed,noattr),Tcons(Tlong(Signed,noattr),Tnil)),
+       Tlong(Signed,noattr));
+     ("__i64_umod", Coq_i64_umod,
+       Tcons(Tlong(Unsigned,noattr),Tcons(Tlong(Unsigned,noattr),Tnil)),
+       Tlong(Unsigned,noattr));
+     ("__i64_shl", Coq_i64_shl,
+       Tcons(Tlong(Signed,noattr),Tcons(Tint(I32,Signed,noattr),Tnil)),
+       Tlong(Signed,noattr));
+     ("__i64_shr", Coq_i64_shr,
+       Tcons(Tlong(Unsigned,noattr),Tcons(Tint(I32,Unsigned,noattr),Tnil)),
+       Tlong(Unsigned,noattr));
+     ("__i64_sar", Coq_i64_sar,
+       Tcons(Tlong(Signed,noattr),Tcons(Tint(I32,Signed,noattr),Tnil)),
+       Tlong(Signed,noattr))]
+
 let convertProgram p =
   numErrors := 0;
   stringNum := 0;
@@ -1071,7 +1122,7 @@ let convertProgram p =
   try
     let gl1 = convertGlobdecls (translEnv Env.empty p) [] (cleanupGlobals p) in
     let gl2 = globals_for_strings gl1 in
-    let p' = { AST.prog_defs = gl2;
+    let p' = { AST.prog_defs = globals_for_i64 @ gl2;
                 AST.prog_main = intern_string "main" } in
     if !numErrors > 0
     then None

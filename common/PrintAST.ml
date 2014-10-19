@@ -38,6 +38,12 @@ let name_of_chunk = function
 
 let name_of_external = function
   | EF_external(name, sg) -> sprintf "extern %S" (extern_atom name)
+  | EF_malloc -> "malloc"
+  | EF_free -> "free"
+  | EF_i64_function op ->
+      sprintf "extern %S" (camlstring_of_coqstring (i64_function_name op))
+
+let name_of_builtin = function
   | EF_builtin(name, sg) -> sprintf "builtin %S" (extern_atom name)
   | EF_vload chunk -> sprintf "volatile load %s" (name_of_chunk chunk)
   | EF_vstore chunk -> sprintf "volatile store %s" (name_of_chunk chunk)
@@ -47,10 +53,10 @@ let name_of_external = function
   | EF_vstore_global(chunk, id, ofs) ->
       sprintf "volatile store %s global %S %ld"
               (name_of_chunk chunk) (extern_atom id) (camlint_of_coqint ofs)
-  | EF_malloc -> "malloc"
-  | EF_free -> "free"
   | EF_memcpy(sz, al) ->
       sprintf "memcpy size %s align %s " (Z.to_string sz) (Z.to_string al)
   | EF_annot(text, targs) -> sprintf "annot %S" (extern_atom text)
   | EF_annot_val(text, targ) ->  sprintf "annot_val %S" (extern_atom text)
   | EF_inline_asm text -> sprintf "inline_asm %S" (extern_atom text)
+  | EF_i64_builtin op ->
+      sprintf "builtin %S" (camlstring_of_coqstring (i64_builtin_name op))

@@ -301,7 +301,7 @@ Inductive rred: expr -> mem -> trace -> expr -> mem -> Prop :=
         E0 (Eval v ty) m
   | red_builtin: forall ef tyargs el ty m vargs t vres m',
       cast_arguments el tyargs vargs ->
-      external_call ef ge vargs m t vres m' ->
+      builtin_call ef ge vargs m t vres m' ->
       rred (Ebuiltin ef tyargs el ty) m
          t (Eval vres ty) m'.
 
@@ -743,9 +743,9 @@ Inductive sstep: state -> trace -> state -> Prop :=
       sstep (Callstate (Internal f) vargs k m)
          E0 (State f f.(fn_body) k e m2)
 
-  | step_external_function: forall ef targs tres cc vargs k m vres t m',
+  | step_external_function: forall ef targs tres vargs k m vres t m',
       external_call ef  ge vargs m t vres m' ->
-      sstep (Callstate (External ef targs tres cc) vargs k m)
+      sstep (Callstate (External ef targs tres) vargs k m)
           t (Returnstate vres k m')
 
   | step_returnstate: forall v f e C ty k m,
@@ -796,6 +796,6 @@ Proof.
   assert (ASSIGN: forall chunk m b ofs t v m', assign_loc ge chunk m b ofs v t m' -> (length t <= 1)%nat).
     intros. inv H0; simpl; try omega. inv H3; simpl; try omega.
   inv H; simpl; try omega. inv H0; eauto; simpl; try omega.
-  eapply external_call_trace_length; eauto.
+  eapply builtin_call_trace_length; eauto.
   inv H; simpl; try omega. eapply external_call_trace_length; eauto.
 Qed.

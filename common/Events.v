@@ -1420,6 +1420,153 @@ Proof.
   split. constructor. auto.
 Qed.
 
+(** ** Semantics of long long operations *)
+Inductive i64_function_sem :
+              i64_function -> list val -> mem -> trace -> val -> mem -> Prop :=
+  | i64_dtos_sem m x z :
+     Val.longoffloat x = Some z -> i64_function_sem i64_dtos (x::nil) m E0 z m
+  | i64_dtou_sem m x z :
+     Val.longuoffloat x = Some z -> i64_function_sem i64_dtou (x::nil) m E0 z m
+  | i64_stod_sem m x z :
+     Val.floatoflong x = Some z -> i64_function_sem i64_stod (x::nil) m E0 z m
+  | i64_utod_sem m x z :
+     Val.floatoflongu x = Some z -> i64_function_sem i64_utod (x::nil) m E0 z m
+  | i64_stof_sem m x z :
+     Val.singleoflong x = Some z -> i64_function_sem i64_stof (x::nil) m E0 z m
+  | i64_utof_sem m x z :
+     Val.singleoflongu x = Some z -> i64_function_sem i64_utof (x::nil) m E0 z m
+  | i64_sdiv_sem m x y z :
+     Val.divls x y = Some z -> i64_function_sem i64_sdiv (x::y::nil) m E0 z m
+  | i64_udiv_sem m x y z :
+     Val.divlu x y = Some z -> i64_function_sem i64_udiv (x::y::nil) m E0 z m
+  | i64_smod_sem m x y z :
+     Val.modls x y = Some z -> i64_function_sem i64_smod (x::y::nil) m E0 z m
+  | i64_umod_sem m x y z :
+     Val.modlu x y = Some z -> i64_function_sem i64_umod (x::y::nil) m E0 z m
+  | i64_shl_sem m x y :
+     i64_function_sem i64_shl (x::y::nil) m E0 (Val.shll x y) m
+  | i64_shr_sem m x y :
+     i64_function_sem i64_shr (x::y::nil) m E0 (Val.shrlu x y) m
+  | i64_sar_sem m x y :
+     i64_function_sem i64_sar (x::y::nil) m E0 (Val.shrl x y) m.
+
+Lemma inject_separated_refl:
+  forall f m1 m2, inject_separated f f m1 m2.
+Proof. red; intros; congruence. Qed.
+
+Lemma extcall_i64_function_ok:
+  forall op,
+  extcall_properties (fun _ _ _ => i64_function_sem op) (i64_function_sig op).
+Proof.
+  split.
+  * destruct 2;
+      repeat match goal with
+      | _ => progress simpl in *
+      | x : val |- _ => destruct x; try discriminate
+      | H : option_map _ ?x = _ |- _ => destruct x; inv H
+      | H : (if ?x then _ else _) = _ |- _ => destruct x; inv H
+      | |- context [if ?x then _ else _] => destruct x
+      end; auto.
+  * auto.
+  * destruct 2; auto.
+  * destruct 2; auto.
+  * destruct 2; auto using Mem.unchanged_on_refl.
+  * destruct 2; intros;
+      repeat match goal with
+      | H : Val.lessdef_list _ _ |- _ => inv H
+      | H : Val.lessdef _ _ |- _ => inv H; try discriminate
+      | H : _ ?v Vundef = _ |- _ => destruct v; discriminate
+      end;
+      do 2 eexists;
+      repeat match goal with
+      | |- _ /\ _ => split
+      | |- i64_function_sem _ _ _ _ _ _ => econstructor; eauto
+      | |- Val.lessdef (_ ?v Vundef) _ => destruct v; constructor
+      end; eauto using Mem.unchanged_on_refl.
+  * destruct 2; intros;
+      repeat match goal with
+      | _ => progress simpl in *
+      | H : val_list_inject _ _ _ |- _ => inv H
+      | H : val_inject _ _ _ |- _ => inv H; try discriminate; [idtac]
+      | H : option_map _ ?x = _ |- _ => destruct x eqn:?; inv H
+      | H : Some _ = Some _ |- _ => inv H
+      | H : (if ?x then _ else _) = _ |- _ => destruct x eqn:?; inv H
+      end;
+      do 3 eexists;
+      repeat match goal with
+      | |- _ /\ _ => split
+      | |- i64_function_sem _ _ _ _ _ _ => econstructor; eauto; simpl
+      | H : _ = _ |- _ => rewrite H; simpl
+      end;
+      eauto using Mem.unchanged_on_refl, inject_separated_refl;
+      repeat match goal with
+      | H : val_inject _ _ _ |- _ => destruct H; try constructor
+      | _ => simpl; destruct (Int.ltu _ _); constructor
+      end.
+  * destruct 2; auto.
+  * intros ??? vargs m ? vres ?? sem TRACE. exists vres, m.
+    destruct sem; inv TRACE; econstructor; eauto.
+  * destruct 1; inversion 1;
+      split; eauto using match_traces_E0; intuition congruence.
+Qed.
+
+Inductive i64_builtin_sem :
+              i64_builtin -> list val -> mem -> trace -> val -> mem -> Prop :=
+  | i64_neg_sem m x :
+     i64_builtin_sem i64_neg (x::nil) m E0 (Val.negl x) m
+  | i64_add_sem m x y :
+     i64_builtin_sem i64_add (x::y::nil) m E0 (Val.addl x y) m
+  | i64_sub_sem m x y :
+     i64_builtin_sem i64_sub (x::y::nil) m E0 (Val.subl x y) m
+  | i64_mul_sem m x y :
+     i64_builtin_sem i64_mul (x::y::nil) m E0 (Val.mull' x y) m.
+
+Lemma extcall_i64_builtin_ok:
+  forall op,
+  extcall_properties (fun _ _ _ => i64_builtin_sem op) (i64_builtin_sig op).
+Proof.
+  split.
+  * destruct 2; simpl;
+      repeat match goal with
+      | x : val |- _ => destruct x; try discriminate; simpl
+      end; auto.
+  * auto.
+  * destruct 2; auto.
+  * destruct 2; auto.
+  * destruct 2; auto using Mem.unchanged_on_refl.
+  * destruct 2; intros;
+      repeat match goal with
+      | H : Val.lessdef_list _ _ |- _ => inv H
+      | H : Val.lessdef _ _ |- _ => inv H; try discriminate
+      end;
+      do 2 eexists;
+      repeat match goal with
+      | |- _ /\ _ => split
+      | |- i64_builtin_sem _ _ _ _ _ _ => econstructor; eauto
+      | |- Val.lessdef (_ ?v Vundef) _ => destruct v; constructor
+      end; eauto using Mem.unchanged_on_refl.
+  * destruct 2; intros;
+      repeat match goal with
+      | _ => progress simpl in *
+      | H : val_list_inject _ _ _ |- _ => inv H
+      | H : val_inject _ _ _ |- _ => inv H; try discriminate; [idtac]
+      end;
+      do 3 eexists;
+      repeat match goal with
+      | |- _ /\ _ => split
+      | |- i64_builtin_sem _ _ _ _ _ _ => econstructor; eauto; simpl
+      end;
+      eauto using Mem.unchanged_on_refl, inject_separated_refl;
+      repeat match goal with
+      | H : val_inject _ _ _ |- _ => destruct H; try constructor
+      end.
+  * destruct 2; auto.
+  * intros ??? vargs m ? vres ?? sem TRACE. exists vres, m.
+    destruct sem; inv TRACE; econstructor; eauto.
+  * destruct 1; inversion 1;
+      split; eauto using match_traces_E0; intuition congruence.
+Qed.
+
 (** ** Semantics of external functions. *)
 
 (** For functions defined outside the program ([EF_external] and [EF_builtin]),
@@ -1454,17 +1601,23 @@ This predicate is used in the semantics of all CompCert languages. *)
 Definition external_call (ef: external_function): extcall_sem :=
   match ef with
   | EF_external name sg  => external_functions_sem name sg
+  | EF_malloc            => extcall_malloc_sem 
+  | EF_free              => extcall_free_sem
+  | EF_i64_function op   => fun _ _ _ => i64_function_sem op
+  end.
+
+Definition builtin_call (ef: builtin): extcall_sem :=
+  match ef with
   | EF_builtin name sg   => external_functions_sem name sg
   | EF_vload chunk       => volatile_load_sem chunk
   | EF_vstore chunk      => volatile_store_sem chunk
   | EF_vload_global chunk id ofs => volatile_load_global_sem chunk id ofs
   | EF_vstore_global chunk id ofs => volatile_store_global_sem chunk id ofs
-  | EF_malloc            => extcall_malloc_sem 
-  | EF_free              => extcall_free_sem
   | EF_memcpy sz al      => extcall_memcpy_sem sz al
   | EF_annot txt targs   => extcall_annot_sem txt targs
   | EF_annot_val txt targ=> extcall_annot_val_sem txt targ
   | EF_inline_asm txt    => inline_assembly_sem txt
+  | EF_i64_builtin op    => fun _ _ _ => i64_builtin_sem op
   end.
 
 Theorem external_call_spec:
@@ -1473,17 +1626,26 @@ Theorem external_call_spec:
 Proof.
   intros. unfold external_call, ef_sig. destruct ef.
   apply external_functions_properties.
+  apply extcall_malloc_ok.
+  apply extcall_free_ok.
+  apply extcall_i64_function_ok.
+Qed.
+
+Theorem builtin_call_spec:
+  forall ef, 
+  extcall_properties (builtin_call ef) (builtin_sig ef).
+Proof.
+  intros. unfold external_call, ef_sig. destruct ef.
   apply external_functions_properties.
   apply volatile_load_ok.
   apply volatile_store_ok.
   apply volatile_load_global_ok.
   apply volatile_store_global_ok.
-  apply extcall_malloc_ok.
-  apply extcall_free_ok.
   apply extcall_memcpy_ok.
   apply extcall_annot_ok.
   apply extcall_annot_val_ok.
   apply inline_assembly_properties.
+  apply extcall_i64_builtin_ok.
 Qed.
 
 Definition external_call_well_typed ef := ec_well_typed (external_call_spec ef).
@@ -1496,6 +1658,17 @@ Definition external_call_mem_inject ef := ec_mem_inject (external_call_spec ef).
 Definition external_call_trace_length ef := ec_trace_length (external_call_spec ef).
 Definition external_call_receptive ef := ec_receptive (external_call_spec ef).
 Definition external_call_determ ef := ec_determ (external_call_spec ef).
+
+Definition builtin_call_well_typed ef := ec_well_typed (builtin_call_spec ef).
+Definition builtin_call_symbols_preserved_gen ef := ec_symbols_preserved (builtin_call_spec ef).
+Definition builtin_call_valid_block ef := ec_valid_block (builtin_call_spec ef).
+Definition builtin_call_max_perm ef := ec_max_perm (builtin_call_spec ef).
+Definition builtin_call_readonly ef := ec_readonly (builtin_call_spec ef).
+Definition builtin_call_mem_extends ef := ec_mem_extends (builtin_call_spec ef).
+Definition builtin_call_mem_inject ef := ec_mem_inject (builtin_call_spec ef).
+Definition builtin_call_trace_length ef := ec_trace_length (builtin_call_spec ef).
+Definition builtin_call_receptive ef := ec_receptive (builtin_call_spec ef).
+Definition builtin_call_determ ef := ec_determ (builtin_call_spec ef).
 
 (** Special cases of [external_call_symbols_preserved_gen]. *)
 
@@ -1532,18 +1705,53 @@ Proof.
   auto.
 Qed.
 
-(** Corollary of [external_call_valid_block]. *)
+Lemma builtin_call_symbols_preserved:
+  forall ef F1 F2 V (ge1: Genv.t F1 V) (ge2: Genv.t F2 V) vargs m1 t vres m2,
+  builtin_call ef ge1 vargs m1 t vres m2 ->
+  (forall id, Genv.find_symbol ge2 id = Genv.find_symbol ge1 id) ->
+  (forall b, Genv.find_var_info ge2 b = Genv.find_var_info ge1 b) ->
+  builtin_call ef ge2 vargs m1 t vres m2.
+Proof.
+  intros. eapply builtin_call_symbols_preserved_gen; eauto.
+  intros. unfold block_is_volatile. rewrite H1. auto.
+Qed.
 
-Lemma external_call_nextblock:
-  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
-  external_call ef ge vargs m1 t vres m2 ->
+Lemma builtin_call_symbols_preserved_2:
+  forall ef F1 V1 F2 V2 (tvar: V1 -> res V2)
+         (ge1: Genv.t F1 V1) (ge2: Genv.t F2 V2) vargs m1 t vres m2,
+  builtin_call ef ge1 vargs m1 t vres m2 ->
+  (forall id, Genv.find_symbol ge2 id = Genv.find_symbol ge1 id) ->
+  (forall b gv1, Genv.find_var_info ge1 b = Some gv1 ->
+     exists gv2, Genv.find_var_info ge2 b = Some gv2 /\ transf_globvar tvar gv1 = OK gv2) ->
+  (forall b gv2, Genv.find_var_info ge2 b = Some gv2 ->
+     exists gv1, Genv.find_var_info ge1 b = Some gv1 /\ transf_globvar tvar gv1 = OK gv2) ->
+  builtin_call ef ge2 vargs m1 t vres m2.
+Proof.
+  intros. eapply builtin_call_symbols_preserved_gen; eauto.
+  intros. unfold block_is_volatile.
+  case_eq (Genv.find_var_info ge1 b); intros.
+  exploit H1; eauto. intros [g2 [A B]]. rewrite A. monadInv B. destruct g; auto.
+  case_eq (Genv.find_var_info ge2 b); intros.
+  exploit H2; eauto. intros [g1 [A B]]. congruence.
+  auto.
+Qed.
+
+(** Corollary of [external_call_valid_block]. *)
+Lemma ec_nextblock:
+  forall sem sg,
+  extcall_properties sem sg ->
+  forall (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
+  sem _ _ ge vargs m1 t vres m2 ->
   Ple (Mem.nextblock m1) (Mem.nextblock m2).
 Proof.
   intros. destruct (plt (Mem.nextblock m2) (Mem.nextblock m1)).
-  exploit external_call_valid_block; eauto. intros.
+  exploit ec_valid_block; eauto. intros.
   eelim Plt_strict; eauto.
   unfold Plt, Ple in *; zify; omega.
 Qed.
+
+Definition external_call_nextblock ef := ec_nextblock (external_call_spec ef).
+Definition builtin_call_nextblock ef := ec_nextblock (builtin_call_spec ef).
 
 (** Corollaries of [external_call_determ]. *)
 
@@ -1563,6 +1771,24 @@ Lemma external_call_deterministic:
   vres1 = vres2 /\ m1 = m2.
 Proof.
   intros. exploit external_call_determ. eexact H. eexact H0. intuition.
+Qed.
+
+Lemma builtin_call_match_traces:
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m t1 vres1 m1 t2 vres2 m2,
+  builtin_call ef ge vargs m t1 vres1 m1 ->
+  builtin_call ef ge vargs m t2 vres2 m2 ->
+  match_traces ge t1 t2.
+Proof.
+  intros. exploit builtin_call_determ. eexact H. eexact H0. tauto.
+Qed.
+
+Lemma builtin_call_deterministic:
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m t vres1 m1 vres2 m2,
+  builtin_call ef ge vargs m t vres1 m1 ->
+  builtin_call ef ge vargs m t vres2 m2 ->
+  vres1 = vres2 /\ m1 = m2.
+Proof.
+  intros. exploit builtin_call_determ. eexact H. eexact H0. intuition.
 Qed.
 
 (** Late in the back-end, calling conventions for external calls change:
@@ -1596,14 +1822,6 @@ Definition proj_sig_res' (s: signature) : list typ :=
   | Some ty => ty :: nil
   | None => Tint :: nil
   end.
-
-Inductive external_call'
-      (ef: external_function) (F V: Type) (ge: Genv.t F V)
-      (vargs: list val) (m1: mem) (t: trace) (vres: list val) (m2: mem) : Prop :=
-  external_call'_intro: forall v,
-    external_call ef ge (decode_longs (sig_args (ef_sig ef)) vargs) m1 t v m2 ->
-    vres = encode_long (sig_res (ef_sig ef)) v ->
-    external_call' ef ge vargs m1 t vres m2.
 
 Lemma decode_longs_lessdef:
   forall tyl vl1 vl2, Val.lessdef_list vl1 vl2 -> Val.lessdef_list (decode_longs tyl vl1) (decode_longs tyl vl2).
@@ -1644,6 +1862,14 @@ Proof.
   destruct (sig_res sg) as [[] | ]; simpl; auto.
   destruct v; simpl; auto.
 Qed.
+
+Inductive external_call'
+      (ef: external_function) (F V: Type) (ge: Genv.t F V)
+      (vargs: list val) (m1: mem) (t: trace) (vres: list val) (m2: mem) : Prop :=
+  external_call'_intro: forall v,
+    external_call ef ge (decode_longs (sig_args (ef_sig ef)) vargs) m1 t v m2 ->
+    vres = encode_long (sig_res (ef_sig ef)) v ->
+    external_call' ef ge vargs m1 t vres m2.
 
 Lemma external_call_well_typed':
   forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
@@ -1754,9 +1980,119 @@ Proof.
   split; congruence.
 Qed.
 
+Inductive builtin_call'
+      (ef: builtin) (F V: Type) (ge: Genv.t F V)
+      (vargs: list val) (m1: mem) (t: trace) (vres: list val) (m2: mem) : Prop :=
+  builtin_call'_intro: forall v,
+    builtin_call ef ge (decode_longs (sig_args (builtin_sig ef)) vargs) m1 t v m2 ->
+    vres = encode_long (sig_res (builtin_sig ef)) v ->
+    builtin_call' ef ge vargs m1 t vres m2.
 
+Lemma builtin_call_well_typed':
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
+  builtin_call' ef ge vargs m1 t vres m2 ->
+  Val.has_type_list vres (proj_sig_res' (builtin_sig ef)).
+Proof.
+  intros. inv H. apply encode_long_has_type. 
+  eapply builtin_call_well_typed; eauto. 
+Qed.
 
+Lemma builtin_call_symbols_preserved':
+  forall ef F1 F2 V (ge1: Genv.t F1 V) (ge2: Genv.t F2 V) vargs m1 t vres m2,
+  builtin_call' ef ge1 vargs m1 t vres m2 ->
+  (forall id, Genv.find_symbol ge2 id = Genv.find_symbol ge1 id) ->
+  (forall b, Genv.find_var_info ge2 b = Genv.find_var_info ge1 b) ->
+  builtin_call' ef ge2 vargs m1 t vres m2.
+Proof.
+  intros. inv H. exists v; auto. eapply builtin_call_symbols_preserved; eauto.
+Qed.
 
+Lemma builtin_call_valid_block':
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2 b,
+  builtin_call' ef ge vargs m1 t vres m2 ->
+  Mem.valid_block m1 b -> Mem.valid_block m2 b.
+Proof.
+  intros. inv H. eapply builtin_call_valid_block; eauto.
+Qed.
 
+Lemma builtin_call_nextblock':
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
+  builtin_call' ef ge vargs m1 t vres m2 ->
+  Ple (Mem.nextblock m1) (Mem.nextblock m2).
+Proof.
+  intros. inv H. eapply builtin_call_nextblock; eauto.
+Qed.
 
+Lemma builtin_call_mem_extends':
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2 m1' vargs',
+  builtin_call' ef ge vargs m1 t vres m2 ->
+  Mem.extends m1 m1' ->
+  Val.lessdef_list vargs vargs' ->
+  exists vres' m2',
+     builtin_call' ef ge vargs' m1' t vres' m2'
+  /\ Val.lessdef_list vres vres'
+  /\ Mem.extends m2 m2'
+  /\ Mem.unchanged_on (loc_out_of_bounds m1) m1' m2'.
+Proof.
+  intros. inv H. 
+  exploit builtin_call_mem_extends; eauto.
+  eapply decode_longs_lessdef; eauto. 
+  intros (v' & m2' & A & B & C & D).
+  exists (encode_long (sig_res (builtin_sig ef)) v'); exists m2'; intuition.
+  econstructor; eauto.
+  eapply encode_long_lessdef; eauto.
+Qed.
 
+Lemma builtin_call_mem_inject':
+  forall ef F V (ge: Genv.t F V) vargs m1 t vres m2 f m1' vargs',
+  meminj_preserves_globals ge f ->
+  builtin_call' ef ge vargs m1 t vres m2 ->
+  Mem.inject f m1 m1' ->
+  val_list_inject f vargs vargs' ->
+  exists f' vres' m2',
+     builtin_call' ef ge vargs' m1' t vres' m2'
+  /\ val_list_inject f' vres vres'
+  /\ Mem.inject f' m2 m2'
+  /\ Mem.unchanged_on (loc_unmapped f) m1 m2
+  /\ Mem.unchanged_on (loc_out_of_reach f m1) m1' m2'
+  /\ inject_incr f f'
+  /\ inject_separated f f' m1 m1'.
+Proof.
+  intros. inv H0. 
+  exploit builtin_call_mem_inject; eauto.
+  eapply decode_longs_inject; eauto.
+  intros (f' & v' & m2' & A & B & C & D & E & P & Q).
+  exists f'; exists (encode_long (sig_res (builtin_sig ef)) v'); exists m2'; intuition.
+  econstructor; eauto.
+  apply encode_long_inject; auto.
+Qed.
+
+Lemma builtin_call_determ':
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m t1 vres1 m1 t2 vres2 m2,
+  builtin_call' ef ge vargs m t1 vres1 m1 ->
+  builtin_call' ef ge vargs m t2 vres2 m2 ->
+  match_traces ge t1 t2 /\ (t1 = t2 -> vres1 = vres2 /\ m1 = m2).
+Proof.
+  intros. inv H; inv H0. exploit builtin_call_determ. eexact H1. eexact H. 
+  intros [A B]. split. auto. intros. destruct B as [C D]; auto. subst. auto. 
+Qed.
+
+Lemma builtin_call_match_traces':
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m t1 vres1 m1 t2 vres2 m2,
+  builtin_call' ef ge vargs m t1 vres1 m1 ->
+  builtin_call' ef ge vargs m t2 vres2 m2 ->
+  match_traces ge t1 t2.
+Proof.
+  intros. inv H; inv H0. eapply builtin_call_match_traces; eauto.
+Qed.
+
+Lemma builtin_call_deterministic':
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m t vres1 m1 vres2 m2,
+  builtin_call' ef ge vargs m t vres1 m1 ->
+  builtin_call' ef ge vargs m t vres2 m2 ->
+  vres1 = vres2 /\ m1 = m2.
+Proof.
+  intros. inv H; inv H0. 
+  exploit builtin_call_deterministic. eexact H1. eexact H. intros [A B].
+  split; congruence.
+Qed.

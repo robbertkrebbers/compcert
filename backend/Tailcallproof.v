@@ -503,11 +503,11 @@ Proof.
 (* builtin *)
   TransfInstr.
   assert (Val.lessdef_list (rs##args) (rs'##args)). apply regset_get_list; auto. 
-  exploit external_call_mem_extends; eauto.
+  exploit builtin_call_mem_extends; eauto.
   intros [v' [m'1 [A [B [C D]]]]].
   left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) pc' (rs'#res <- v') m'1); split.
   eapply exec_Ibuiltin; eauto.
-  eapply external_call_symbols_preserved; eauto.
+  eapply builtin_call_symbols_preserved; eauto.
   exact symbols_preserved. exact varinfo_preserved.
   econstructor; eauto. apply regset_set; auto.
 
@@ -625,5 +625,3 @@ Proof.
 Qed.
 
 End PRESERVATION.
-
-
