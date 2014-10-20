@@ -555,29 +555,6 @@ let print_builtin_inline oc name args res =
       fprintf oc "	vabs.f64 %a, %a\n" freg res freg a1; 1
   | "__builtin_fsqrt", [FR a1], [FR res] ->
       fprintf oc "	vsqrt.f64 %a, %a\n" freg res freg a1; 1
-  (* 64-bit integer arithmetic *)
-  | "__builtin_negl", [IR ah; IR al], [IR rh; IR rl] ->
-      print_int64_arith oc (rl = ah) rl (fun rl ->
-        fprintf oc "	rsbs	%a, %a, #0\n" ireg rl ireg al;
-        (* No "rsc" instruction in Thumb2.  Emulate based on
-             rsc a, b, #0 == a <- AddWithCarry(~b, 0, carry)
-                          == mvn a, b; adc a, a, #0 *)
-        if !Clflags.option_mthumb then begin
-          fprintf oc "	mvn	%a, %a\n" ireg rh ireg ah;
-          fprintf oc "	adc	%a, %a, #0\n" ireg rh ireg rh; 3
-        end else begin
-          fprintf oc "	rsc	%a, %a, #0\n" ireg rh ireg ah; 2
-        end)
-  | "__builtin_addl", [IR ah; IR al; IR bh; IR bl], [IR rh; IR rl] ->
-      print_int64_arith oc (rl = ah || rl = bh) rl (fun rl ->
-        fprintf oc "	adds	%a, %a, %a\n" ireg rl ireg al ireg bl;
-        fprintf oc "	adc	%a, %a, %a\n" ireg rh ireg ah ireg bh; 2)
-  | "__builtin_subl", [IR ah; IR al; IR bh; IR bl], [IR rh; IR rl] ->
-      print_int64_arith oc (rl = ah || rl = bh) rl (fun rl ->
-        fprintf oc "	subs	%a, %a, %a\n" ireg rl ireg al ireg bl;
-        fprintf oc "	sbc	%a, %a, %a\n" ireg rh ireg ah ireg bh; 2)
-  | "__builtin_mull", [IR a; IR b], [IR rh; IR rl] ->
-      fprintf oc "	umull   %a, %a, %a, %a\n" ireg rl ireg rh ireg a ireg b; 1
   (* Memory accesses *)
   | "__builtin_read16_reversed", [IR a1], [IR res] ->
       fprintf oc "	ldrh	%a, [%a, #0]\n" ireg res ireg a1;
@@ -609,6 +586,38 @@ let print_builtin_inline oc name args res =
       invalid_arg ("unrecognized builtin " ^ name)
   in
   fprintf oc "%s end %s\n" comment name;
+  n
+
+let print_i64_builtin_inline oc op args res =
+  fprintf oc "%s begin i64 builtin\n" comment;
+  let n = match op, args, res with
+  | Coq_i64_neg, [IR ah; IR al], [IR rh; IR rl] ->
+      print_int64_arith oc (rl = ah) rl (fun rl ->
+        fprintf oc "	rsbs	%a, %a, #0\n" ireg rl ireg al;
+        (* No "rsc" instruction in Thumb2.  Emulate based on
+             rsc a, b, #0 == a <- AddWithCarry(~b, 0, carry)
+                          == mvn a, b; adc a, a, #0 *)
+        if !Clflags.option_mthumb then begin
+          fprintf oc "	mvn	%a, %a\n" ireg rh ireg ah;
+          fprintf oc "	adc	%a, %a, #0\n" ireg rh ireg rh; 3
+        end else begin
+          fprintf oc "	rsc	%a, %a, #0\n" ireg rh ireg ah; 2
+        end)
+  | Coq_i64_add, [IR ah; IR al; IR bh; IR bl], [IR rh; IR rl] ->
+      print_int64_arith oc (rl = ah || rl = bh) rl (fun rl ->
+        fprintf oc "	adds	%a, %a, %a\n" ireg rl ireg al ireg bl;
+        fprintf oc "	adc	%a, %a, %a\n" ireg rh ireg ah ireg bh; 2)
+  | Coq_i64_sub, [IR ah; IR al; IR bh; IR bl], [IR rh; IR rl] ->
+      print_int64_arith oc (rl = ah || rl = bh) rl (fun rl ->
+        fprintf oc "	subs	%a, %a, %a\n" ireg rl ireg al ireg bl;
+        fprintf oc "	sbc	%a, %a, %a\n" ireg rh ireg ah ireg bh; 2)
+  | Coq_i64_mul, [IR a; IR b], [IR rh; IR rl] ->
+      fprintf oc "	umull   %a, %a, %a, %a\n" ireg rl ireg rh ireg a ireg b; 1
+  (* Catch-all *)
+  | _ ->
+      invalid_arg ("unrecognized i64 builtin")
+  in
+  fprintf oc "%s end i64 builtin\n" comment;
   n
 
 (* Fixing up calling conventions *)
@@ -1047,6 +1056,8 @@ let print_instruction oc = function
           fprintf oc "	%s\n" (extern_atom txt);
           fprintf oc "%s end inline assembly\n" comment;
           5 (* hoping this is an upper bound...  *)
+      | EF_i64_builtin op ->
+          print_i64_builtin_inline oc op args res
       | _ ->
           assert false
       end

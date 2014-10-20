@@ -275,8 +275,8 @@ Inductive instruction : Type :=
   | Pxori: ireg -> ireg -> constant -> instruction            (**r bitwise xor with immediate *)
   | Pxoris: ireg -> ireg -> constant -> instruction           (**r bitwise xor with immediate high *)
   | Plabel: label -> instruction                              (**r define a code label *)
-  | Pbuiltin: external_function -> list preg -> list preg -> instruction (**r built-in function (pseudo) *)
-  | Pannot: external_function -> list annot_param -> instruction (**r annotation statement (pseudo) *)
+  | Pbuiltin: builtin -> list preg -> list preg -> instruction (**r built-in function (pseudo) *)
+  | Pannot: builtin -> list annot_param -> instruction        (**r annotation statement (pseudo) *)
   | Pcfi_adjust: int -> instruction                           (**r .cfi_adjust debug directive *)
   | Pcfi_rel_offset: int -> instruction                       (**r .cfi_rel_offset lr debug directive *)
 
@@ -968,7 +968,7 @@ Inductive step: state -> trace -> state -> Prop :=
       rs PC = Vptr b ofs ->
       Genv.find_funct_ptr ge b = Some (Internal f) ->
       find_instr (Int.unsigned ofs) f.(fn_code) = Some (Pbuiltin ef args res) ->
-      external_call' ef ge (map rs args) m t vl m' ->
+      builtin_call' ef ge (map rs args) m t vl m' ->
       rs' = nextinstr
               (set_regs res vl
                 (undef_regs (map preg_of (destroyed_by_builtin ef)) rs)) ->
@@ -979,7 +979,7 @@ Inductive step: state -> trace -> state -> Prop :=
       Genv.find_funct_ptr ge b = Some (Internal f) ->
       find_instr (Int.unsigned ofs) f.(fn_code) = Some (Pannot ef args) ->
       annot_arguments rs m args vargs ->
-      external_call' ef ge vargs m t v m' ->
+      builtin_call' ef ge vargs m t v m' ->
       step (State rs m) t
            (State (nextinstr rs) m')
   | exec_step_external:
@@ -1056,11 +1056,11 @@ Ltac Equalities :=
   discriminate.
   discriminate.
   inv H11. 
-  exploit external_call_determ'. eexact H4. eexact H9. intros [A B].
+  exploit builtin_call_determ'. eexact H4. eexact H9. intros [A B].
   split. auto. intros. destruct B; auto. subst. auto.
   inv H12.
   assert (vargs0 = vargs) by (eapply annot_arguments_determ; eauto). subst vargs0.
-  exploit external_call_determ'. eexact H5. eexact H13. intros [A B].
+  exploit builtin_call_determ'. eexact H5. eexact H13. intros [A B].
   split. auto. intros. destruct B; auto. subst. auto.
   assert (args0 = args) by (eapply extcall_arguments_determ; eauto). subst args0.
   exploit external_call_determ'. eexact H3. eexact H8. intros [A B].
@@ -1068,8 +1068,8 @@ Ltac Equalities :=
 (* trace length *)
   red; intros. inv H; simpl.
   omega.
-  inv H3; eapply external_call_trace_length; eauto.
-  inv H4; eapply external_call_trace_length; eauto.
+  inv H3; eapply builtin_call_trace_length; eauto.
+  inv H4; eapply builtin_call_trace_length; eauto.
   inv H2; eapply external_call_trace_length; eauto.
 (* initial states *)
   inv H; inv H0. f_equal. congruence.
@@ -1089,5 +1089,3 @@ Definition data_preg (r: preg) : bool :=
   | CARRY => false
   | _ => true
   end.
-
-

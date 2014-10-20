@@ -119,7 +119,7 @@ Definition destroyed_by_cond (cond: condition): list mreg :=
 Definition destroyed_by_jumptable: list mreg :=
   R12 :: nil.
 
-Definition destroyed_by_builtin (ef: external_function): list mreg :=
+Definition destroyed_by_builtin (ef: builtin): list mreg :=
   match ef with
   | EF_builtin _ _ => F13 :: nil
   | EF_vload _ => nil
@@ -128,7 +128,8 @@ Definition destroyed_by_builtin (ef: external_function): list mreg :=
   | EF_vstore_global Mint64 _ _ => R10 :: R11 :: R12 :: nil
   | EF_vstore_global _ _ _ => R11 :: R12 :: nil
   | EF_memcpy _ _ => R11 :: R12 :: F13 :: nil
-  | _ => nil
+  | EF_i64_builtin _ => F13 :: nil
+  | EF_annot _ _ | EF_annot_val _ _ | EF_inline_asm _ => nil
   end.
 
 Definition destroyed_by_setstack (ty: typ): list mreg :=
@@ -143,7 +144,7 @@ Definition temp_for_parent_frame: mreg :=
 Definition mregs_for_operation (op: operation): list (option mreg) * option mreg :=
   (nil, None).
 
-Definition mregs_for_builtin (ef: external_function): list (option mreg) * list (option mreg) :=
+Definition mregs_for_builtin (ef: builtin): list (option mreg) * list (option mreg) :=
   (nil, nil).
 
 Global Opaque

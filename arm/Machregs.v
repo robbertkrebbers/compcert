@@ -95,7 +95,7 @@ Definition destroyed_by_cond (cond: condition): list mreg :=
 Definition destroyed_by_jumptable: list mreg :=
   nil.
 
-Definition destroyed_by_builtin (ef: external_function): list mreg :=
+Definition destroyed_by_builtin (ef: builtin): list mreg :=
   match ef with
   | EF_memcpy sz al => if zle sz 32 then F7 :: nil else R2 :: R3 :: R12 :: nil
   | _ => nil
@@ -115,7 +115,7 @@ Definition mregs_for_operation (op: operation): list (option mreg) * option mreg
   | _ => (nil, None)
   end.
 
-Definition mregs_for_builtin (ef: external_function): list (option mreg) * list(option mreg) :=
+Definition mregs_for_builtin (ef: builtin): list (option mreg) * list(option mreg) :=
   match ef with
   | EF_memcpy sz al =>
       if zle sz 32 then (nil, nil) else (Some R3 :: Some R2 :: nil, nil)

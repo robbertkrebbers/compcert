@@ -749,12 +749,12 @@ Hint Resolve agree_nextinstr agree_set_other: asmgen.
   inv AT. monadInv H3. 
   exploit functions_transl; eauto. intro FN.
   generalize (transf_function_no_overflow _ _ H2); intro NOOV.
-  exploit external_call_mem_extends'; eauto. eapply preg_vals; eauto.
+  exploit builtin_call_mem_extends'; eauto. eapply preg_vals; eauto.
   intros [vres' [m2' [A [B [C D]]]]].
   left. econstructor; split. apply plus_one. 
   eapply exec_step_builtin. eauto. eauto.
   eapply find_instr_tail; eauto.
-  eapply external_call_symbols_preserved'; eauto.
+  eapply builtin_call_symbols_preserved'; eauto.
   exact symbols_preserved. exact varinfo_preserved.
   eauto.
   econstructor; eauto.
@@ -771,12 +771,12 @@ Hint Resolve agree_nextinstr agree_set_other: asmgen.
   exploit functions_transl; eauto. intro FN.
   generalize (transf_function_no_overflow _ _ H3); intro NOOV.
   exploit annot_arguments_match; eauto. intros [vargs' [P Q]]. 
-  exploit external_call_mem_extends'; eauto.
+  exploit builtin_call_mem_extends'; eauto.
   intros [vres' [m2' [A [B [C D]]]]].
   left. econstructor; split. apply plus_one. 
   eapply exec_step_annot. eauto. eauto.
   eapply find_instr_tail; eauto. eauto.
-  eapply external_call_symbols_preserved'; eauto.
+  eapply builtin_call_symbols_preserved'; eauto.
   exact symbols_preserved. exact varinfo_preserved.
   eapply match_states_intro with (ep := false); eauto with coqlib.
   unfold nextinstr. rewrite Pregmap.gss. 

@@ -381,23 +381,6 @@ let expand_builtin_inline name args res =
       emit (Plwz(res, Cint _4, GPR1));
       emit (Paddi(GPR1, GPR1, Cint _8));
       emit (Pcfi_adjust _m8)
-  (* 64-bit integer arithmetic *)
-  | "__builtin_negl", [IR ah; IR al], [IR rh; IR rl] ->
-      expand_int64_arith (rl = ah) rl (fun rl ->
-        emit (Psubfic(rl, al, Cint _0));
-        emit (Psubfze(rh, ah)))
-  | "__builtin_addl", [IR ah; IR al; IR bh; IR bl], [IR rh; IR rl] ->
-      expand_int64_arith (rl = ah || rl = bh) rl (fun rl ->
-        emit (Paddc(rl, al, bl));
-        emit (Padde(rh, ah, bh)))
-  | "__builtin_subl", [IR ah; IR al; IR bh; IR bl], [IR rh; IR rl] ->
-      expand_int64_arith (rl = ah || rl = bh) rl (fun rl ->
-        emit (Psubfc(rl, bl, al));
-        emit (Psubfe(rh, bh, ah)))
-  | "__builtin_mull", [IR a; IR b], [IR rh; IR rl] ->
-      expand_int64_arith (rl = a || rl = b) rl (fun rl ->
-        emit (Pmullw(rl, a, b));
-        emit (Pmulhwu(rh, a, b)))
   (* Memory accesses *)
   | "__builtin_read16_reversed", [IR a1], [IR res] ->
       emit (Plhbrx(res, GPR0, a1))
@@ -425,6 +408,30 @@ let expand_builtin_inline name args res =
   | _ ->
       invalid_arg ("unrecognized builtin " ^ name)
 
+let expand_i64_builtin op args res =
+  (* Can use as temporaries: GPR0, FPR13 *)
+  match op, args, res with
+  (* 64-bit integer arithmetic *)
+  | Coq_i64_neg, [IR ah; IR al], [IR rh; IR rl] ->
+      expand_int64_arith (rl = ah) rl (fun rl ->
+        emit (Psubfic(rl, al, Cint _0));
+        emit (Psubfze(rh, ah)))
+  | Coq_i64_add, [IR ah; IR al; IR bh; IR bl], [IR rh; IR rl] ->
+      expand_int64_arith (rl = ah || rl = bh) rl (fun rl ->
+        emit (Paddc(rl, al, bl));
+        emit (Padde(rh, ah, bh)))
+  | Coq_i64_sub, [IR ah; IR al; IR bh; IR bl], [IR rh; IR rl] ->
+      expand_int64_arith (rl = ah || rl = bh) rl (fun rl ->
+        emit (Psubfc(rl, bl, al));
+        emit (Psubfe(rh, bh, ah)))
+  | Coq_i64_mul, [IR a; IR b], [IR rh; IR rl] ->
+      expand_int64_arith (rl = a || rl = b) rl (fun rl ->
+        emit (Pmullw(rl, a, b));
+        emit (Pmulhwu(rh, a, b)))
+  (* Catch-all *)
+  | _ ->
+      invalid_arg ("unrecognized i64 builtin")
+              
 (* Calls to variadic functions: condition bit 6 must be set
    if at least one argument is a float; clear otherwise.
    Note that variadic functions cannot have arguments of type Tsingle. *)
@@ -525,6 +532,8 @@ let expand_instruction instr =
           expand_annot_val txt targ args res
       | EF_inline_asm txt ->
           emit instr
+      | EF_i64_builtin op ->
+          expand_i64_builtin op args res
       | _ ->
           assert false
       end
