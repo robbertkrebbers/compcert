@@ -266,7 +266,7 @@ Qed.
 
 Lemma compat_eval_steps_aux f r e m r' m' s2 :
   simple r ->
-  star step ge s2 nil (ExprState f r' Kstop e m') ->
+  star (step ge) s2 nil (ExprState f r' Kstop e m') ->
   estep ge (ExprState f r Kstop e m) nil s2 ->
   exists r1,
     s2 = ExprState f r1 Kstop e m /\
@@ -295,7 +295,7 @@ Qed.
 
 Lemma compat_eval_steps:
   forall f r e m  r' m',
-  star step ge (ExprState f r Kstop e m) E0 (ExprState f r' Kstop e m') ->
+  star (step ge) (ExprState f r Kstop e m) E0 (ExprState f r' Kstop e m') ->
   simple r -> 
   m' = m /\ compat_eval RV e r r' m.
 Proof.
@@ -320,7 +320,7 @@ Qed.
 
 Theorem eval_simple_steps:
   forall f r e m v ty m',
-  star step ge (ExprState f r Kstop e m) E0 (ExprState f (Eval v ty) Kstop e m') ->
+  star (step ge) (ExprState f r Kstop e m) E0 (ExprState f (Eval v ty) Kstop e m') ->
   simple r ->
   m' = m /\ ty = typeof r /\ eval_simple_rvalue e m r v.
 Proof.
@@ -465,7 +465,7 @@ Qed.
 
 Theorem constval_steps:
   forall f r m v v' ty m',
-  star step ge (ExprState f r Kstop empty_env m) E0 (ExprState f (Eval v' ty) Kstop empty_env m') ->
+  star (step ge) (ExprState f r Kstop empty_env m) E0 (ExprState f (Eval v' ty) Kstop empty_env m') ->
   constval r = OK v ->
   m' = m /\ ty = typeof r /\ val_inject inj v v'.
 Proof.
@@ -480,7 +480,7 @@ Qed.
 Theorem transl_init_single_steps:
   forall ty a data f m v1 ty1 m' v chunk b ofs m'',
   transl_init_single ty a = OK data ->
-  star step ge (ExprState f a Kstop empty_env m) E0 (ExprState f (Eval v1 ty1) Kstop empty_env m') ->
+  star (step ge) (ExprState f a Kstop empty_env m) E0 (ExprState f (Eval v1 ty1) Kstop empty_env m') ->
   sem_cast v1 ty1 ty = Some v ->
   access_mode ty = By_value chunk ->
   Mem.store chunk m' b ofs v = Some m'' ->
@@ -651,8 +651,8 @@ Fixpoint fields_of_struct (id: ident) (ty: type) (fl: fieldlist) (pos: Z) : list
 
 Inductive exec_init: mem -> block -> Z -> type -> initializer -> mem -> Prop :=
   | exec_init_single: forall m b ofs ty a v1 ty1 chunk m' v m'',
-      star step ge (ExprState dummy_function a Kstop empty_env m) 
-                E0 (ExprState dummy_function (Eval v1 ty1) Kstop empty_env m') ->
+      star (step ge) (ExprState dummy_function a Kstop empty_env m) 
+                  E0 (ExprState dummy_function (Eval v1 ty1) Kstop empty_env m') ->
       sem_cast v1 ty1 ty = Some v ->
       access_mode ty = By_value chunk ->
       Mem.store chunk m' b ofs v = Some m'' ->
@@ -779,5 +779,3 @@ Proof.
 Qed.
 
 End SOUNDNESS.
-
-

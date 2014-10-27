@@ -1249,7 +1249,7 @@ Lemma save_callee_save_regs_correct:
   frame_perm_freeable m sp ->
   agree_regs j ls rs ->
   exists rs', exists m',
-    star step tge 
+    star (step tge )
        (State cs fb (Vptr sp Int.zero)
          (save_callee_save_regs bound number mkindex ty fe l k) rs m)
     E0 (State cs fb (Vptr sp Int.zero) k rs' m')
@@ -1352,7 +1352,7 @@ Lemma save_callee_save_correct:
   (forall r, Val.has_type (ls (R r)) (mreg_type r)) ->
   frame_perm_freeable m sp ->
   exists rs', exists m',
-    star step tge 
+    star (step tge)
        (State cs fb (Vptr sp Int.zero) (save_callee_save fe k) rs m)
     E0 (State cs fb (Vptr sp Int.zero) k rs' m')
   /\ (forall r,
@@ -1494,7 +1494,7 @@ Lemma function_prologue_correct:
      Mem.alloc m1' 0 tf.(fn_stacksize) = (m2', sp')
   /\ store_stack m2' (Vptr sp' Int.zero) Tint tf.(fn_link_ofs) parent = Some m3'
   /\ store_stack m3' (Vptr sp' Int.zero) Tint tf.(fn_retaddr_ofs) ra = Some m4'
-  /\ star step tge 
+  /\ star (step tge) 
          (State cs fb (Vptr sp' Int.zero) (save_callee_save fe k) rs1 m4')
       E0 (State cs fb (Vptr sp' Int.zero) k rs' m5')
   /\ agree_regs j' ls1 rs'
@@ -1677,7 +1677,7 @@ Lemma restore_callee_save_regs_correct:
   list_norepet l -> 
   agree_unused ls0 rs ->
   exists rs',
-    star step tge
+    star (step tge)
       (State cs fb (Vptr sp Int.zero)
         (restore_callee_save_regs bound number mkindex ty fe l k) rs m)
    E0 (State cs fb (Vptr sp Int.zero) k rs' m)
@@ -1729,7 +1729,7 @@ Lemma restore_callee_save_correct:
   agree_frame j ls ls0 m sp m' sp' pa ra ->
   agree_unused j ls0 rs ->
   exists rs',
-    star step tge
+    star (step tge)
        (State cs fb (Vptr sp' Int.zero) (restore_callee_save fe k) rs m')
     E0 (State cs fb (Vptr sp' Int.zero) k rs' m')
   /\ (forall r, 
@@ -1800,7 +1800,7 @@ Lemma function_epilogue_correct:
      load_stack m' (Vptr sp' Int.zero) Tint tf.(fn_link_ofs) = Some pa
   /\ load_stack m' (Vptr sp' Int.zero) Tint tf.(fn_retaddr_ofs) = Some ra
   /\ Mem.free m' sp' 0 tf.(fn_stacksize) = Some m1'
-  /\ star step tge
+  /\ star (step tge)
        (State cs fb (Vptr sp' Int.zero) (restore_callee_save fe k) rs m')
     E0 (State cs fb (Vptr sp' Int.zero) k rs1 m')
   /\ agree_regs j (return_regs ls0 ls) rs1
@@ -2476,7 +2476,7 @@ Inductive match_states: Linear.state -> Mach.state -> Prop :=
 Theorem transf_step_correct:
   forall s1 t s2, Linear.step ge s1 t s2 ->
   forall (WTS: wt_state s1) s1' (MS: match_states s1 s1'),
-  exists s2', plus step tge s1' t s2' /\ match_states s2 s2'.
+  exists s2', plus (step tge) s1' t s2' /\ match_states s2 s2'.
 Proof.
 (*
   assert (USEWTF: forall f i c,
