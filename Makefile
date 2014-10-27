@@ -72,7 +72,7 @@ LIB=Axioms.v Coqlib.v Intv.v Maps.v Heaps.v Lattice.v Ordered.v \
 # Parts common to the front-ends and the back-end (in common/)
 
 COMMON=Errors.v AST.v Events.v Globalenvs.v Memdata.v Memtype.v Memory.v \
-  Values.v Smallstep.v Behaviors.v Switch.v Determinism.v Unityping.v
+  Values.v Smallstep.v Switch.v Unityping.v
 
 # Back-end modules (in backend/, $(ARCH)/, $(ARCH)/$(VARIANT))
 
@@ -103,7 +103,7 @@ BACKEND=\
 
 # C front-end modules (in cfrontend/)
 
-CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Cstrategy.v Cexec.v \
+CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Cstrategy.v \
   Initializers.v Initializersproof.v \
   SimplExpr.v SimplExprspec.v SimplExprproof.v \
   Clight.v SimplLocals.v SimplLocalsproof.v \
@@ -122,7 +122,7 @@ PARSER=Cabs.v Parser.v
 
 # Putting everything together (in driver/)
 
-DRIVER=Compopts.v Compiler.v Complements.v
+DRIVER=Compopts.v Compiler.v
 
 # All source files
 

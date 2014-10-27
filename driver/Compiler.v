@@ -22,7 +22,6 @@ Require Import Smallstep.
 Require Csyntax.
 Require Csem.
 Require Cstrategy.
-Require Cexec.
 Require Clight.
 Require Csharpminor.
 Require Cminor.
@@ -154,10 +153,9 @@ Definition transf_c_program (p: Csyntax.program) : res Asm.program :=
   @@@ time "Clight generation" SimplExpr.transl_program
   @@@ transf_clight_program.
 
-(** Force [Initializers] and [Cexec] to be extracted as well. *)
+(** Force [Initializers] to be extracted as well. *)
 
 Definition transl_init := Initializers.transl_init.
-Definition cexec_do_step := Cexec.do_step.
 
 (** The following lemmas help reason over compositions of passes. *)
 
@@ -192,11 +190,9 @@ These results establish the correctness of the whole compiler! *)
 Theorem transf_rtl_program_correct:
   forall p tp,
   transf_rtl_program p = OK tp ->
-  forward_simulation (RTL.semantics p) (Asm.semantics tp)
-  * backward_simulation (RTL.semantics p) (Asm.semantics tp).
+  forward_simulation (RTL.semantics p) (Asm.semantics tp).
 Proof.
   intros.
-  assert (F: forward_simulation (RTL.semantics p) (Asm.semantics tp)).
   unfold transf_rtl_program, time in H.
   repeat rewrite compose_print_identity in H.
   simpl in H.
@@ -226,20 +222,14 @@ Proof.
   eapply compose_forward_simulation. apply Stackingproof.transf_program_correct.
     eexact Asmgenproof.return_address_exists. eassumption.
   apply Asmgenproof.transf_program_correct; eauto.
-  split. auto. 
-  apply forward_to_backward_simulation. auto. 
-  apply RTL.semantics_receptive.
-  apply Asm.semantics_determinate.
 Qed.
 
 Theorem transf_cminor_program_correct:
   forall p tp,
   transf_cminor_program p = OK tp ->
-  forward_simulation (Cminor.semantics p) (Asm.semantics tp)
-  * backward_simulation (Cminor.semantics p) (Asm.semantics tp).
+  forward_simulation (Cminor.semantics p) (Asm.semantics tp).
 Proof.
   intros.
-  assert (F: forward_simulation (Cminor.semantics p) (Asm.semantics tp)).
   unfold transf_cminor_program, time in H.
   repeat rewrite compose_print_identity in H.
   simpl in H. 
@@ -247,23 +237,15 @@ Proof.
   destruct (RTLgen.transl_program p1) as [p2|] eqn:?; simpl in H; try discriminate.
   eapply compose_forward_simulation. apply Selectionproof.transf_program_correct. eauto.
   eapply compose_forward_simulation. apply RTLgenproof.transf_program_correct. eassumption.
-  exact (fst (transf_rtl_program_correct _ _ H)).
-
-  split. auto. 
-  apply forward_to_backward_simulation. auto. 
-  apply Cminor.semantics_receptive.
-  apply Asm.semantics_determinate.
+  exact (transf_rtl_program_correct _ _ H).
 Qed.
 
 Theorem transf_clight_program_correct:
   forall p tp,
   transf_clight_program p = OK tp ->
-  forward_simulation (Clight.semantics1 p) (Asm.semantics tp)
-  * backward_simulation (Clight.semantics1 p) (Asm.semantics tp).
+  forward_simulation (Clight.semantics1 p) (Asm.semantics tp).
 Proof.
-  intros. 
-  assert (F: forward_simulation (Clight.semantics1 p) (Asm.semantics tp)).
-  revert H; unfold transf_clight_program, time; simpl.
+  intros p tp. unfold transf_clight_program, time; simpl.
   rewrite print_identity.
   caseEq (SimplLocals.transf_program p); simpl; try congruence; intros p0 EQ0.
   caseEq (Cshmgen.transl_program p0); simpl; try congruence; intros p1 EQ1.
@@ -272,46 +254,17 @@ Proof.
   eapply compose_forward_simulation. apply SimplLocalsproof.transf_program_correct. eauto.
   eapply compose_forward_simulation. apply Cshmgenproof.transl_program_correct. eauto.
   eapply compose_forward_simulation. apply Cminorgenproof.transl_program_correct. eauto.
-  exact (fst (transf_cminor_program_correct _ _ EQ3)). 
-
-  split. auto. 
-  apply forward_to_backward_simulation. auto. 
-  apply Clight.semantics_receptive.
-  apply Asm.semantics_determinate.
+  exact (transf_cminor_program_correct _ _ EQ3). 
 Qed.
 
 Theorem transf_cstrategy_program_correct:
   forall p tp,
   transf_c_program p = OK tp ->
-  forward_simulation (Cstrategy.semantics p) (Asm.semantics tp)
-  * backward_simulation (atomic (Cstrategy.semantics p)) (Asm.semantics tp).
+  forward_simulation (Cstrategy.semantics p) (Asm.semantics tp).
 Proof.
-  intros.
-  assert (F: forward_simulation (Cstrategy.semantics p) (Asm.semantics tp)).
-  revert H; unfold transf_c_program, time; simpl.
+  intros p tp. unfold transf_c_program, time; simpl.
   caseEq (SimplExpr.transl_program p); simpl; try congruence; intros p0 EQ0.
   intros EQ1.
   eapply compose_forward_simulation. apply SimplExprproof.transl_program_correct. eauto.
-  exact (fst (transf_clight_program_correct _ _ EQ1)). 
-
-  split. auto. 
-  apply forward_to_backward_simulation.
-  apply factor_forward_simulation. auto. eapply sd_traces. eapply Asm.semantics_determinate.
-  apply atomic_receptive. apply Cstrategy.semantics_strongly_receptive.
-  apply Asm.semantics_determinate.
-Qed.
-
-Theorem transf_c_program_correct:
-  forall p tp,
-  transf_c_program p = OK tp ->
-  backward_simulation (Csem.semantics p) (Asm.semantics tp).
-Proof.
-  intros. 
-  apply compose_backward_simulation with (atomic (Cstrategy.semantics p)).
-  eapply sd_traces; eapply Asm.semantics_determinate.
-  apply factor_backward_simulation. 
-  apply Cstrategy.strategy_simulation.
-  apply Csem.semantics_single_events.
-  eapply ssr_well_behaved; eapply Cstrategy.semantics_strongly_receptive.
-  exact (snd (transf_cstrategy_program_correct _ _ H)).
+  exact (transf_clight_program_correct _ _ EQ1).
 Qed.

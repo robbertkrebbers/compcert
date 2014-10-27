@@ -235,7 +235,7 @@ let process_c_file sourcename =
     if !option_interp then begin
       let csyntax = parse_c_file sourcename preproname in
       safe_remove preproname;
-      Interp.execute csyntax;
+      (* Interp.execute csyntax; TODO: RESTORE *)
       ""
     end else if !option_S then begin
       compile_c_file sourcename preproname
@@ -261,7 +261,7 @@ let process_c_file sourcename =
 let process_i_file sourcename =
   if !option_interp then begin
     let csyntax = parse_c_file sourcename sourcename in
-    Interp.execute csyntax;
+    (* Interp.execute csyntax; TODO: RESTORE *)
     ""
   end else if !option_S then begin
     compile_c_file sourcename sourcename
@@ -460,13 +460,15 @@ General options:
   -stdlib <dir>  Set the path of the Compcert run-time library
   -v             Print external commands before invoking them
   -timings       Show the time spent in various compiler passes
-Interpreter mode:
+"
+(*
+"Interpreter mode:
   -interp        Execute given .c files using the reference interpreter
   -quiet         Suppress diagnostic messages for the interpreter
   -trace         Have the interpreter produce a detailed trace of reductions
   -random        Randomize execution order
   -all           Simulate all possible execution orders
-"
+" TODO: RESTORE *)
 
 let language_support_options = [
   option_fbitfields; option_flongdouble;
@@ -502,11 +504,11 @@ let cmdline_actions =
   "-dmach$", Set option_dmach;
   "-dasm$", Set option_dasm;
   "-sdump$", Set option_sdump;
-  "-interp$", Set option_interp;
+(*  "-interp$", Set option_interp;
   "-quiet$", Self (fun _ -> Interp.trace := 0);
   "-trace$", Self (fun _ -> Interp.trace := 2);
   "-random$", Self (fun _ -> Interp.mode := Interp.Random);
-  "-all$", Self (fun _ -> Interp.mode := Interp.All);
+  "-all$", Self (fun _ -> Interp.mode := Interp.All); TODO: RESTORE *)
   ".*\\.c$", Self (fun s ->
       push_action process_c_file s;
       incr num_source_files);
