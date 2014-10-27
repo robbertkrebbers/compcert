@@ -135,27 +135,23 @@ Inductive state : Type :=
              (f: function)            (**r function currently executing *)
              (sp: val)                (**r stack pointer *)
              (pc: node)               (**r current program point *)
-             (ls: locset)             (**r location state *)
-             (m: mem),                (**r memory state *)
+             (ls: locset),            (**r location state *)
       state
   | Block:
       forall (stack: list stackframe) (**r call stack *)
              (f: function)            (**r function currently executing *)
              (sp: val)                (**r stack pointer *)
              (bb: bblock)             (**r current basic block *)
-             (ls: locset)             (**r location state *)
-             (m: mem),                (**r memory state *)
+             (ls: locset),            (**r location state *)
       state
   | Callstate:
       forall (stack: list stackframe) (**r call stack *)
              (f: fundef)              (**r function to call *)
-             (ls: locset)             (**r location state of caller *)
-             (m: mem),                (**r memory state *)
+             (ls: locset),            (**r location state of caller *)
       state
   | Returnstate:
       forall (stack: list stackframe) (**r call stack *)
-             (ls: locset)             (**r location state of callee *)
-             (m: mem),                (**r memory state *)
+             (ls: locset),            (**r location state of callee *)
       state.
 
 
@@ -197,90 +193,90 @@ Definition parent_locset (stack: list stackframe) : locset :=
   | Stackframe f sp ls bb :: stack' => ls
   end.
 
-Inductive step: state -> trace -> state -> Prop :=
+Inductive step: state * mem -> trace -> state * mem -> Prop :=
   | exec_start_block: forall s f sp pc rs m bb,
       (fn_code f)!pc = Some bb ->
-      step (State s f sp pc rs m)
-        E0 (Block s f sp bb rs m)
+      step (State s f sp pc rs, m)
+        E0 (Block s f sp bb rs, m)
   | exec_Lop: forall s f sp op args res bb rs m v rs',
       eval_operation ge sp op (reglist rs args) m = Some v ->
       rs' = Locmap.set (R res) v (undef_regs (destroyed_by_op op) rs) ->
-      step (Block s f sp (Lop op args res :: bb) rs m)
-        E0 (Block s f sp bb rs' m)
+      step (Block s f sp (Lop op args res :: bb) rs, m)
+        E0 (Block s f sp bb rs', m)
   | exec_Lload: forall s f sp chunk addr args dst bb rs m a v rs',
       eval_addressing ge sp addr (reglist rs args) = Some a ->
       Mem.loadv chunk m a = Some v ->
       rs' = Locmap.set (R dst) v (undef_regs (destroyed_by_load chunk addr) rs) ->
-      step (Block s f sp (Lload chunk addr args dst :: bb) rs m)
-        E0 (Block s f sp bb rs' m)
+      step (Block s f sp (Lload chunk addr args dst :: bb) rs, m)
+        E0 (Block s f sp bb rs', m)
   | exec_Lgetstack: forall s f sp sl ofs ty dst bb rs m rs',
       rs' = Locmap.set (R dst) (rs (S sl ofs ty)) (undef_regs (destroyed_by_getstack sl) rs) ->
-      step (Block s f sp (Lgetstack sl ofs ty dst :: bb) rs m)
-        E0 (Block s f sp bb rs' m)
+      step (Block s f sp (Lgetstack sl ofs ty dst :: bb) rs, m)
+        E0 (Block s f sp bb rs', m)
   | exec_Lsetstack: forall s f sp src sl ofs ty bb rs m rs',
       rs' = Locmap.set (S sl ofs ty) (rs (R src)) (undef_regs (destroyed_by_setstack ty) rs) ->
-      step (Block s f sp (Lsetstack src sl ofs ty :: bb) rs m)
-        E0 (Block s f sp bb rs' m)
+      step (Block s f sp (Lsetstack src sl ofs ty :: bb) rs, m)
+        E0 (Block s f sp bb rs', m)
   | exec_Lstore: forall s f sp chunk addr args src bb rs m a rs' m',
       eval_addressing ge sp addr (reglist rs args) = Some a ->
       Mem.storev chunk m a (rs (R src)) = Some m' ->
       rs' = undef_regs (destroyed_by_store chunk addr) rs ->
-      step (Block s f sp (Lstore chunk addr args src :: bb) rs m)
-        E0 (Block s f sp bb rs' m')
+      step (Block s f sp (Lstore chunk addr args src :: bb) rs, m)
+        E0 (Block s f sp bb rs', m')
   | exec_Lcall: forall s f sp sig ros bb rs m fd,
       find_function ros rs = Some fd ->
       funsig fd = sig ->
-      step (Block s f sp (Lcall sig ros :: bb) rs m)
-        E0 (Callstate (Stackframe f sp rs bb :: s) fd rs m)
+      step (Block s f sp (Lcall sig ros :: bb) rs, m)
+        E0 (Callstate (Stackframe f sp rs bb :: s) fd rs, m)
   | exec_Ltailcall: forall s f sp sig ros bb rs m fd rs' m',
       rs' = return_regs (parent_locset s) rs ->
       find_function ros rs' = Some fd ->
       funsig fd = sig ->
       Mem.free m sp 0 f.(fn_stacksize) = Some m' ->
-      step (Block s f (Vptr sp Int.zero) (Ltailcall sig ros :: bb) rs m)
-        E0 (Callstate s fd rs' m')
+      step (Block s f (Vptr sp Int.zero) (Ltailcall sig ros :: bb) rs, m)
+        E0 (Callstate s fd rs', m')
   | exec_Lbuiltin: forall s f sp ef args res bb rs m t vl rs' m',
       builtin_call' ef ge (reglist rs args) m t vl m' ->
       rs' = Locmap.setlist (map R res) vl (undef_regs (destroyed_by_builtin ef) rs) ->
-      step (Block s f sp (Lbuiltin ef args res :: bb) rs m)
-         t (Block s f sp bb rs' m')
+      step (Block s f sp (Lbuiltin ef args res :: bb) rs, m)
+         t (Block s f sp bb rs', m')
   | exec_Lannot: forall s f sp ef args bb rs m t vl m',
       builtin_call' ef ge (map rs args) m t vl m' ->
-      step (Block s f sp (Lannot ef args :: bb) rs m)
-         t (Block s f sp bb rs m')
+      step (Block s f sp (Lannot ef args :: bb) rs, m)
+         t (Block s f sp bb rs, m')
   | exec_Lbranch: forall s f sp pc bb rs m,
-      step (Block s f sp (Lbranch pc :: bb) rs m)
-        E0 (State s f sp pc rs m)
+      step (Block s f sp (Lbranch pc :: bb) rs, m)
+        E0 (State s f sp pc rs, m)
   | exec_Lcond: forall s f sp cond args pc1 pc2 bb rs b pc rs' m,
       eval_condition cond (reglist rs args) m = Some b ->
       pc = (if b then pc1 else pc2) ->
       rs' = undef_regs (destroyed_by_cond cond) rs ->
-      step (Block s f sp (Lcond cond args pc1 pc2 :: bb) rs m)
-        E0 (State s f sp pc rs' m)
+      step (Block s f sp (Lcond cond args pc1 pc2 :: bb) rs, m)
+        E0 (State s f sp pc rs', m)
   | exec_Ljumptable: forall s f sp arg tbl bb rs m n pc rs',
       rs (R arg) = Vint n ->
       list_nth_z tbl (Int.unsigned n) = Some pc ->
       rs' = undef_regs (destroyed_by_jumptable) rs ->
-      step (Block s f sp (Ljumptable arg tbl :: bb) rs m)
-        E0 (State s f sp pc rs' m)
+      step (Block s f sp (Ljumptable arg tbl :: bb) rs, m)
+        E0 (State s f sp pc rs', m)
   | exec_Lreturn: forall s f sp bb rs m m',
       Mem.free m sp 0 f.(fn_stacksize) = Some m' ->
-      step (Block s f (Vptr sp Int.zero) (Lreturn :: bb) rs m)
-        E0 (Returnstate s (return_regs (parent_locset s) rs) m')
+      step (Block s f (Vptr sp Int.zero) (Lreturn :: bb) rs, m)
+        E0 (Returnstate s (return_regs (parent_locset s) rs), m')
   | exec_function_internal: forall s f rs m m' sp rs',
       Mem.alloc m 0 f.(fn_stacksize) = (m', sp) ->
       rs' = undef_regs destroyed_at_function_entry (call_regs rs) ->
-      step (Callstate s (Internal f) rs m)
-        E0 (State s f (Vptr sp Int.zero) f.(fn_entrypoint) rs' m')
+      step (Callstate s (Internal f) rs, m)
+        E0 (State s f (Vptr sp Int.zero) f.(fn_entrypoint) rs', m')
   | exec_function_external: forall s ef t args res rs m rs' m',
       args = map rs (loc_arguments (ef_sig ef)) ->
       external_call' ef ge args m t res m' ->
       rs' = Locmap.setlist (map R (loc_result (ef_sig ef))) res rs ->
-      step (Callstate s (External ef) rs m)
-         t (Returnstate s rs' m')
+      step (Callstate s (External ef) rs, m)
+         t (Returnstate s rs', m')
   | exec_return: forall f sp rs1 bb s rs m,
-      step (Returnstate (Stackframe f sp rs1 bb :: s) rs m)
-        E0 (Block s f sp bb rs m).
+      step (Returnstate (Stackframe f sp rs1 bb :: s) rs, m)
+        E0 (Block s f sp bb rs, m).
 
 End RELSEM.
 
@@ -289,20 +285,20 @@ End RELSEM.
   main function, to be found in the machine register dictated
   by the calling conventions. *)
 
-Inductive initial_state (p: program): state -> Prop :=
+Inductive initial_state (p: program): state * mem -> Prop :=
   | initial_state_intro: forall b f m0,
       let ge := Genv.globalenv p in
       Genv.init_mem p = Some m0 ->
       Genv.find_symbol ge p.(prog_main) = Some b ->
       Genv.find_funct_ptr ge b = Some f ->
       funsig f = signature_main ->
-      initial_state p (Callstate nil f (Locmap.init Vundef) m0).
+      initial_state p (Callstate nil f (Locmap.init Vundef), m0).
 
-Inductive final_state: state -> int -> Prop :=
+Inductive final_state: state * mem -> int -> Prop :=
   | final_state_intro: forall rs m r retcode,
       loc_result signature_main = r :: nil ->
       rs (R r) = Vint retcode ->
-      final_state (Returnstate nil rs m) retcode.
+      final_state (Returnstate nil rs, m) retcode.
 
 Definition semantics (p: program) :=
   Semantics step (initial_state p) final_state (Genv.globalenv p).

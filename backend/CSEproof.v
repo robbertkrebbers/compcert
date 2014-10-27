@@ -923,7 +923,7 @@ Inductive match_stackframes: list stackframe -> list stackframe -> Prop :=
       (Stackframe res f sp pc rs :: s)
       (Stackframe res (transf_function' f approx) sp pc rs' :: s').
 
-Inductive match_states: state -> state -> Prop :=
+Inductive match_states: state * mem -> state * mem -> Prop :=
   | match_states_intro:
       forall s sp pc rs m s' rs' m' f approx
              (ANALYZE: analyze f (vanalyze rm f) = Some approx)
@@ -931,23 +931,23 @@ Inductive match_states: state -> state -> Prop :=
              (RLD: regs_lessdef rs rs')
              (MEXT: Mem.extends m m')
              (STACKS: match_stackframes s s'),
-      match_states (State s f sp pc rs m)
-                   (State s' (transf_function' f approx) sp pc rs' m')
+      match_states (State s f sp pc rs, m)
+                   (State s' (transf_function' f approx) sp pc rs', m')
   | match_states_call:
       forall s f tf args m s' args' m',
       match_stackframes s s' ->
       transf_fundef rm f = OK tf ->
       Val.lessdef_list args args' ->
       Mem.extends m m' ->
-      match_states (Callstate s f args m)
-                   (Callstate s' tf args' m')
+      match_states (Callstate s f args, m)
+                   (Callstate s' tf args', m')
   | match_states_return:
       forall s s' v v' m m',
       match_stackframes s s' ->
       Val.lessdef v v' ->
       Mem.extends m m' ->
-      match_states (Returnstate s v m)
-                   (Returnstate s' v' m').
+      match_states (Returnstate s v, m)
+                   (Returnstate s' v', m').
 
 Ltac TransfInstr :=
   match goal with
@@ -1203,7 +1203,7 @@ Lemma transf_initial_states:
 Proof.
   intros. inversion H. 
   exploit funct_ptr_translated; eauto. intros [tf [A B]].
-  exists (Callstate nil tf nil m0); split.
+  exists (Callstate nil tf nil, m0); split.
   econstructor; eauto.
   eapply Genv.init_mem_transf_partial; eauto.
   replace (prog_main tprog) with (prog_main prog).

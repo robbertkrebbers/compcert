@@ -25,6 +25,7 @@ Require Import Coqlib.
 Require Import Events.
 Require Import Globalenvs.
 Require Import Integers.
+Require Import Memory.
 
 Set Implicit Arguments.
 
@@ -280,9 +281,9 @@ Record semantics : Type := Semantics {
   state: Type;
   funtype: Type;
   vartype: Type;
-  step : Genv.t funtype vartype -> state -> trace -> state -> Prop;
-  initial_state: state -> Prop;
-  final_state: state -> int -> Prop;
+  step : Genv.t funtype vartype -> (state * mem) -> trace -> (state * mem) -> Prop;
+  initial_state: (state * mem) -> Prop;
+  final_state: (state * mem) -> int -> Prop;
   globalenv: Genv.t funtype vartype
 }.
 
@@ -304,7 +305,7 @@ Record forward_simulation (L1 L2: semantics) : Type :=
     fsim_index: Type;
     fsim_order: fsim_index -> fsim_index -> Prop;
     fsim_order_wf: well_founded fsim_order;
-    fsim_match_states :> fsim_index -> state L1 -> state L2 -> Prop;
+    fsim_match_states :> fsim_index -> (state L1 * mem) -> (state L2 * mem) -> Prop;
     fsim_match_initial_states:
       forall s1, initial_state L1 s1 ->
       exists i, exists s2, initial_state L2 s2 /\ fsim_match_states i s1 s2;
@@ -352,7 +353,7 @@ Variable L2: semantics.
 Hypothesis symbols_preserved:
   forall id, Genv.find_symbol (globalenv L2) id = Genv.find_symbol (globalenv L1) id.
 
-Variable match_states: state L1 -> state L2 -> Prop.
+Variable match_states: (state L1 * mem) -> (state L2 * mem) -> Prop.
 
 Hypothesis match_initial_states:
   forall s1, initial_state L1 s1 ->
@@ -376,7 +377,7 @@ Section SIMULATION_STAR_WF.
   of the first semantics.  Stuttering steps must correspond
   to states that decrease w.r.t. [order]. *)
 
-Variable order: state L1 -> state L1 -> Prop.
+Variable order: (state L1 * mem) -> (state L1 * mem) -> Prop.
 Hypothesis order_wf: well_founded order.
 
 Hypothesis simulation:
@@ -407,7 +408,7 @@ Section SIMULATION_STAR.
   associated with states of the first semantics.  It must decrease when we take 
   a stuttering step. *)
 
-Variable measure: state L1 -> nat.
+Variable measure: (state L1 * mem) -> nat.
 
 Hypothesis simulation:
   forall s1 t s1', Step L1 s1 t s1' ->
@@ -471,7 +472,7 @@ End SIMULATION_STEP.
 
 Section SIMULATION_OPT.
 
-Variable measure: state L1 -> nat.
+Variable measure: (state L1 * mem) -> nat.
 
 Hypothesis simulation:
   forall s1 t s1', Step L1 s1 t s1' ->
@@ -550,7 +551,7 @@ Let ff_index : Type := (fsim_index S23 * fsim_index S12)%type.
 Let ff_order : ff_index -> ff_index -> Prop :=
   lex_ord (clos_trans _ (fsim_order S23)) (fsim_order S12).
 
-Let ff_match_states (i: ff_index) (s1: state L1) (s3: state L3) : Prop :=
+Let ff_match_states (i: ff_index) (s1: state L1 * mem) (s3: state L3 * mem) : Prop :=
   exists s2, S12 (snd i) s1 s2 /\ S23 (fst i) s2 s3.
 
 Lemma compose_forward_simulation: forward_simulation L1 L3.

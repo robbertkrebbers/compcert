@@ -231,8 +231,8 @@ Lemma tr_moves_init_regs:
   (forall r, In r rdsts -> Ple r ctx2.(mreg)) ->
   list_forall2 (val_reg_charact F ctx1 rs1) vl rsrcs ->
   exists rs2,
-    star (step tge) (State stk f sp pc1 rs1 m)
-                 E0 (State stk f sp pc2 rs2 m)
+    star (step tge) (State stk f sp pc1 rs1, m)
+                 E0 (State stk f sp pc2 rs2, m)
   /\ agree_regs F ctx2 (init_regs vl rdsts) rs2
   /\ forall r, Plt r ctx2.(dreg) -> rs2#r = rs1#r.
 Proof.
@@ -777,7 +777,7 @@ Qed.
 
 (** ** Relating states *)
 
-Inductive match_states: state -> state -> Prop :=
+Inductive match_states: state * mem -> state * mem -> Prop :=
   | match_regular_states: forall stk f sp pc rs m stk' f' sp' rs' m' F ctx
         (MS: match_stacks_inside F m m' stk stk' f' ctx sp' rs')
         (FB: tr_funbody fenv f'.(fn_stacksize) ctx f f'.(fn_code))
@@ -788,15 +788,15 @@ Inductive match_states: state -> state -> Prop :=
         (PRIV: range_private F m m' sp' (ctx.(dstk) + ctx.(mstk)) f'.(fn_stacksize))
         (SSZ1: 0 <= f'.(fn_stacksize) < Int.max_unsigned)
         (SSZ2: forall ofs, Mem.perm m' sp' ofs Max Nonempty -> 0 <= ofs <= f'.(fn_stacksize)),
-      match_states (State stk f (Vptr sp Int.zero) pc rs m)
-                   (State stk' f' (Vptr sp' Int.zero) (spc ctx pc) rs' m')
+      match_states (State stk f (Vptr sp Int.zero) pc rs, m)
+                   (State stk' f' (Vptr sp' Int.zero) (spc ctx pc) rs', m')
   | match_call_states: forall stk fd args m stk' fd' args' m' F
         (MS: match_stacks F m m' stk stk' (Mem.nextblock m'))
         (FD: transf_fundef fenv fd = OK fd')
         (VINJ: val_list_inject F args args')
         (MINJ: Mem.inject F m m'),
-      match_states (Callstate stk fd args m)
-                   (Callstate stk' fd' args' m')
+      match_states (Callstate stk fd args, m)
+                   (Callstate stk' fd' args', m')
   | match_call_regular_states: forall stk f vargs m stk' f' sp' rs' m' F ctx ctx' pc' pc1' rargs
         (MS: match_stacks_inside F m m' stk stk' f' ctx sp' rs')
         (FB: tr_funbody fenv f'.(fn_stacksize) ctx f f'.(fn_code))
@@ -809,14 +809,14 @@ Inductive match_states: state -> state -> Prop :=
         (PRIV: range_private F m m' sp' ctx.(dstk) f'.(fn_stacksize))
         (SSZ1: 0 <= f'.(fn_stacksize) < Int.max_unsigned)
         (SSZ2: forall ofs, Mem.perm m' sp' ofs Max Nonempty -> 0 <= ofs <= f'.(fn_stacksize)),
-      match_states (Callstate stk (Internal f) vargs m)
-                   (State stk' f' (Vptr sp' Int.zero) pc' rs' m')
+      match_states (Callstate stk (Internal f) vargs, m)
+                   (State stk' f' (Vptr sp' Int.zero) pc' rs', m')
   | match_return_states: forall stk v m stk' v' m' F
         (MS: match_stacks F m m' stk stk' (Mem.nextblock m'))
         (VINJ: val_inject F v v')
         (MINJ: Mem.inject F m m'),
-      match_states (Returnstate stk v m)
-                   (Returnstate stk' v' m')
+      match_states (Returnstate stk v, m)
+                   (Returnstate stk' v', m')
   | match_return_regular_states: forall stk v m stk' f' sp' rs' m' F ctx pc' or rinfo
         (MS: match_stacks_inside F m m' stk stk' f' ctx sp' rs')
         (RET: ctx.(retinfo) = Some rinfo)
@@ -827,16 +827,16 @@ Inductive match_states: state -> state -> Prop :=
         (PRIV: range_private F m m' sp' ctx.(dstk) f'.(fn_stacksize))
         (SSZ1: 0 <= f'.(fn_stacksize) < Int.max_unsigned)
         (SSZ2: forall ofs, Mem.perm m' sp' ofs Max Nonempty -> 0 <= ofs <= f'.(fn_stacksize)),
-      match_states (Returnstate stk v m)
-                   (State stk' f' (Vptr sp' Int.zero) pc' rs' m').
+      match_states (Returnstate stk v, m)
+                   (State stk' f' (Vptr sp' Int.zero) pc' rs', m').
 
 (** ** Forward simulation *)
 
-Definition measure (S: state) : nat :=
+Definition measure (S: state * mem) : nat :=
   match S with
-  | State _ _ _ _ _ _ => 1%nat
-  | Callstate _ _ _ _ => 0%nat
-  | Returnstate _ _ _ => 0%nat
+  | (State _ _ _ _ _, _) => 1%nat
+  | (Callstate _ _ _, _) => 0%nat
+  | (Returnstate _ _, _) => 0%nat
   end.
 
 Lemma tr_funbody_inv:
@@ -1218,7 +1218,7 @@ Lemma transf_initial_states:
 Proof.
   intros. inv H.
   exploit function_ptr_translated; eauto. intros [tf [FIND TR]].
-  exists (Callstate nil tf nil m0); split.
+  exists (Callstate nil tf nil, m0); split.
   econstructor; eauto.
     unfold transf_program in TRANSF. eapply Genv.init_mem_transf_partial; eauto.
     rewrite symbols_preserved. 

@@ -89,7 +89,7 @@ Lemma exec_straight_exec:
   forall fb f c ep tf tc c' rs m rs' m',
   transl_code_at_pc ge (rs PC) fb f c ep tf tc ->
   exec_straight tge tf tc rs m c' rs' m' ->
-  plus (step tge) (State rs m) E0 (State rs' m').
+  plus (step tge) (rs, m) E0 (rs', m').
 Proof.
   intros. inv H.
   eapply exec_straight_steps_1; eauto.
@@ -418,7 +418,7 @@ Qed.
 - Mach register values and ARM register values agree.
 *)
 
-Inductive match_states: Mach.state -> Asm.state -> Prop :=
+Inductive match_states: Mach.state * mem -> Asm.regset * mem -> Prop :=
   | match_states_intro:
       forall s fb sp c ep ms m m' rs f tf tc
         (STACKS: match_stack ge s)
@@ -427,8 +427,8 @@ Inductive match_states: Mach.state -> Asm.state -> Prop :=
         (AT: transl_code_at_pc ge (rs PC) fb f c ep tf tc)
         (AG: agree ms sp rs)
         (DXP: ep = true -> rs#IR12 = parent_sp s),
-      match_states (Mach.State s fb sp c ms m)
-                   (Asm.State rs m')
+      match_states (Mach.State s fb sp c ms, m)
+                   (rs, m')
   | match_states_call:
       forall s fb ms m m' rs
         (STACKS: match_stack ge s)
@@ -436,16 +436,16 @@ Inductive match_states: Mach.state -> Asm.state -> Prop :=
         (AG: agree ms (parent_sp s) rs)
         (ATPC: rs PC = Vptr fb Int.zero)
         (ATLR: rs RA = parent_ra s),
-      match_states (Mach.Callstate s fb ms m)
-                   (Asm.State rs m')
+      match_states (Mach.Callstate s fb ms, m)
+                   (rs, m')
   | match_states_return:
       forall s ms m m' rs
         (STACKS: match_stack ge s)
         (MEXT: Mem.extends m m')
         (AG: agree ms (parent_sp s) rs)
         (ATPC: rs PC = parent_ra s),
-      match_states (Mach.Returnstate s ms m)
-                   (Asm.State rs m').
+      match_states (Mach.Returnstate s ms, m)
+                   (rs, m').
 
 Lemma exec_straight_steps:
   forall s fb f rs1 i c ep tf tc m1' m2 m2' sp ms2,
@@ -459,12 +459,12 @@ Lemma exec_straight_steps:
     /\ agree ms2 sp rs2
     /\ (it1_is_parent ep i = true -> rs2#IR12 = parent_sp s)) ->
   exists st',
-  plus (step tge) (State rs1 m1') E0 st' /\
-  match_states (Mach.State s fb sp c ms2 m2) st'.
+  plus (step tge) (rs1, m1') E0 st' /\
+  match_states (Mach.State s fb sp c ms2, m2) st'.
 Proof.
   intros. inversion H2. subst. monadInv H7. 
   exploit H3; eauto. intros [rs2 [A [B C]]]. 
-  exists (State rs2 m2'); split.
+  exists (rs2, m2'); split.
   eapply exec_straight_exec; eauto. 
   econstructor; eauto. eapply exec_straight_at; eauto.
 Qed.
@@ -483,8 +483,8 @@ Lemma exec_straight_steps_goto:
     /\ agree ms2 sp rs2
     /\ exec_instr tge tf jmp rs2 m2' = goto_label tf lbl rs2 m2') ->
   exists st',
-  plus (step tge) (State rs1 m1') E0 st' /\
-  match_states (Mach.State s fb sp c' ms2 m2) st'.
+  plus (step tge) (rs1, m1') E0 st' /\
+  match_states (Mach.State s fb sp c' ms2, m2) st'.
 Proof.
   intros. inversion H3. subst. monadInv H9.
   exploit H5; eauto. intros [jmp [k' [rs2 [A [B C]]]]].
@@ -494,7 +494,7 @@ Proof.
   intros [ofs' [PC2 CT2]].
   exploit find_label_goto_label; eauto. 
   intros [tc' [rs3 [GOTO [AT' OTH]]]].
-  exists (State rs3 m2'); split.
+  exists (rs3, m2'); split.
   eapply plus_right'.
   eapply exec_straight_steps_1; eauto. 
   econstructor; eauto.
@@ -514,11 +514,11 @@ Qed.
   So, the following integer measure will suffice to rule out
   the unwanted behaviour. *)
 
-Definition measure (s: Mach.state) : nat :=
+Definition measure (s: Mach.state * mem) : nat :=
   match s with
-  | Mach.State _ _ _ _ _ _ => 0%nat
-  | Mach.Callstate _ _ _ _ => 0%nat
-  | Mach.Returnstate _ _ _ => 1%nat
+  | (Mach.State _ _ _ _ _, _) => 0%nat
+  | (Mach.Callstate _ _ _, _) => 0%nat
+  | (Mach.Returnstate _ _, _) => 1%nat
   end.
 
 Remark preg_of_not_R12: forall r, negb (mreg_eq r R12) = true -> IR IR12 <> preg_of r.
@@ -782,7 +782,7 @@ Opaque loadind.
   assert (f0 = f) by congruence. subst f0.
   inv AT. monadInv H4. 
   exploit find_label_goto_label; eauto. intros [tc' [rs' [GOTO [AT2 INV]]]].
-  left; exists (State rs' m'); split.
+  left; exists (rs', m'); split.
   apply plus_one. econstructor; eauto.
   eapply functions_transl; eauto.
   eapply find_instr_tail; eauto.
@@ -904,7 +904,7 @@ Opaque loadind.
   simpl. unfold exec_store. change (rs2 IR14) with (rs0 IR14). 
   rewrite Int.add_zero_l. simpl. unfold chunk_of_type in P. simpl in P.
   rewrite Int.add_zero_l in P. rewrite ATLR. rewrite P. auto. auto. auto. 
-  left; exists (State rs3 m3'); split.
+  left; exists (rs3, m3'); split.
   eapply exec_straight_steps_1; eauto. omega. constructor. 
   econstructor; eauto. 
   change (rs3 PC) with (Val.add (Val.add (rs0 PC) Vone) Vone).

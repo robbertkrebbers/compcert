@@ -255,14 +255,14 @@ Lemma starts_with_correct:
   unique_labels c2 ->
   starts_with lbl c1 = true ->
   find_label lbl c2 = Some c3 ->
-  plus (step tge) (State s f sp c1 ls m)
-               E0 (State s f sp c3 ls m).
+  plus (step tge) (State s f sp c1 ls, m)
+               E0 (State s f sp c3 ls, m).
 Proof.
   induction c1.
   simpl; intros; discriminate.
   simpl starts_with. destruct a; try (intros; discriminate).
   intros. 
-  apply plus_left with E0 (State s f sp c1 ls m) E0.
+  apply plus_left with E0 (State s f sp c1 ls, m) E0.
   simpl. constructor. 
   destruct (peq lbl l).
   subst l. replace c3 with c1. constructor.
@@ -459,8 +459,8 @@ Lemma add_branch_correct:
   transf_function f = OK tf ->
   is_tail k tf.(fn_code) ->
   find_label lbl tf.(fn_code) = Some c ->
-  plus (step tge) (State s tf sp (add_branch lbl k) ls m)
-               E0 (State s tf sp c ls m).
+  plus (step tge) (State s tf sp (add_branch lbl k) ls, m)
+               E0 (State s tf sp c ls, m).
 Proof.
   intros. unfold add_branch.
   caseEq (starts_with lbl k); intro SW.
@@ -497,23 +497,23 @@ Inductive match_stackframes: LTL.stackframe -> Linear.stackframe -> Prop :=
         (LTL.Stackframe f sp ls bb)
         (Linear.Stackframe tf sp ls (linearize_block bb c)).
 
-Inductive match_states: LTL.state -> Linear.state -> Prop :=
+Inductive match_states: LTL.state * mem -> Linear.state * mem -> Prop :=
   | match_states_add_branch:
       forall s f sp pc ls m tf ts c
         (STACKS: list_forall2 match_stackframes s ts)
         (TRF: transf_function f = OK tf)
         (REACH: (reachable f)!!pc = true)
         (TAIL: is_tail c tf.(fn_code)),
-      match_states (LTL.State s f sp pc ls m)
-                   (Linear.State ts tf sp (add_branch pc c) ls m)
+      match_states (LTL.State s f sp pc ls, m)
+                   (Linear.State ts tf sp (add_branch pc c) ls, m)
   | match_states_cond_taken:
       forall s f sp pc ls m tf ts cond args c
         (STACKS: list_forall2 match_stackframes s ts)
         (TRF: transf_function f = OK tf)
         (REACH: (reachable f)!!pc = true)
         (JUMP: eval_condition cond (reglist ls args) m = Some true),
-      match_states (LTL.State s f sp pc (undef_regs (destroyed_by_cond cond) ls) m)
-                   (Linear.State ts tf sp (Lcond cond args pc :: c) ls m)
+      match_states (LTL.State s f sp pc (undef_regs (destroyed_by_cond cond) ls), m)
+                   (Linear.State ts tf sp (Lcond cond args pc :: c) ls, m)
   | match_states_jumptable:
       forall s f sp pc ls m tf ts arg tbl c n
         (STACKS: list_forall2 match_stackframes s ts)
@@ -521,32 +521,32 @@ Inductive match_states: LTL.state -> Linear.state -> Prop :=
         (REACH: (reachable f)!!pc = true)
         (ARG: ls (R arg) = Vint n)
         (JUMP: list_nth_z tbl (Int.unsigned n) = Some pc),
-      match_states (LTL.State s f sp pc (undef_regs destroyed_by_jumptable ls) m)
-                   (Linear.State ts tf sp (Ljumptable arg tbl :: c) ls m)
+      match_states (LTL.State s f sp pc (undef_regs destroyed_by_jumptable ls), m)
+                   (Linear.State ts tf sp (Ljumptable arg tbl :: c) ls, m)
   | match_states_block:
       forall s f sp bb ls m tf ts c
         (STACKS: list_forall2 match_stackframes s ts)
         (TRF: transf_function f = OK tf)
         (REACH: forall pc, In pc (successors_block bb) -> (reachable f)!!pc = true)
         (TAIL: is_tail c tf.(fn_code)),
-      match_states (LTL.Block s f sp bb ls m)
-                   (Linear.State ts tf sp (linearize_block bb c) ls m)
+      match_states (LTL.Block s f sp bb ls, m)
+                   (Linear.State ts tf sp (linearize_block bb c) ls, m)
   | match_states_call:
       forall s f ls m tf ts,
       list_forall2 match_stackframes s ts ->
       transf_fundef f = OK tf ->
-      match_states (LTL.Callstate s f ls m)
-                   (Linear.Callstate ts tf ls m)
+      match_states (LTL.Callstate s f ls, m)
+                   (Linear.Callstate ts tf ls, m)
   | match_states_return:
       forall s ls m ts,
       list_forall2 match_stackframes s ts ->
-      match_states (LTL.Returnstate s ls m)
-                   (Linear.Returnstate ts ls m).
+      match_states (LTL.Returnstate s ls, m)
+                   (Linear.Returnstate ts ls, m).
 
-Definition measure (S: LTL.state) : nat :=
+Definition measure (S: LTL.state * mem) : nat :=
   match S with
-  | LTL.State s f sp pc ls m => 0%nat
-  | LTL.Block s f sp bb ls m => 1%nat
+  | (LTL.State s f sp pc ls, m) => 0%nat
+  | (LTL.Block s f sp bb ls, m) => 1%nat
   | _ => 0%nat
   end.
 
@@ -721,7 +721,7 @@ Lemma transf_initial_states:
 Proof.
   intros. inversion H.
   exploit function_ptr_translated; eauto. intros [tf [A B]].  
-  exists (Callstate nil tf (Locmap.init Vundef) m0); split.
+  exists (Callstate nil tf (Locmap.init Vundef), m0); split.
   econstructor; eauto. eapply Genv.init_mem_transf_partial; eauto. 
   replace (prog_main tprog) with (prog_main prog).
   rewrite symbols_preserved. eauto.

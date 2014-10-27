@@ -1511,8 +1511,8 @@ Lemma exec_moves:
   satisf rs ls e' ->
   wt_regset env rs ->
   exists ls',
-    star (step tge) (Block s f sp (expand_moves mv bb) ls m)
-                 E0 (Block s f sp bb ls' m)
+    star (step tge) (Block s f sp (expand_moves mv bb) ls, m)
+                 E0 (Block s f sp bb ls', m)
   /\ satisf rs ls' e.
 Proof.
 Opaque destroyed_by_op.
@@ -1560,15 +1560,15 @@ Inductive match_stackframes: list RTL.stackframe -> list LTL.stackframe -> signa
            Val.has_type v (env res) ->
            agree_callee_save ls ls1 ->
            exists ls2,
-           star (LTL.step tge) (Block ts tf sp bb ls1 m)
-                            E0 (State ts tf sp pc ls2 m)
+           star (LTL.step tge) (Block ts tf sp bb ls1, m)
+                            E0 (State ts tf sp pc ls2, m)
            /\ satisf (rs#res <- v) ls2 e),
       match_stackframes
         (RTL.Stackframe res f sp pc rs :: s)
         (LTL.Stackframe tf sp ls bb :: ts)
         sg.
 
-Inductive match_states: RTL.state -> LTL.state -> Prop :=
+Inductive match_states: RTL.state * mem -> LTL.state * mem -> Prop :=
   | match_states_intro:
       forall s f sp pc rs m ts tf ls m' an e env
         (STACKS: match_stackframes s ts (fn_sig tf))
@@ -1579,8 +1579,8 @@ Inductive match_states: RTL.state -> LTL.state -> Prop :=
         (MEM: Mem.extends m m')
         (WTF: wt_function f env)
         (WTRS: wt_regset env rs),
-      match_states (RTL.State s f sp pc rs m)
-                   (LTL.State ts tf sp pc ls m')
+      match_states (RTL.State s f sp pc rs, m)
+                   (LTL.State ts tf sp pc ls, m')
   | match_states_call:
       forall s f args m ts tf ls m'
         (STACKS: match_stackframes s ts (funsig tf))
@@ -1589,8 +1589,8 @@ Inductive match_states: RTL.state -> LTL.state -> Prop :=
         (AG: agree_callee_save (parent_locset ts) ls)
         (MEM: Mem.extends m m')
         (WTARGS: Val.has_type_list args (sig_args (funsig tf))),
-      match_states (RTL.Callstate s f args m)
-                   (LTL.Callstate ts tf ls m')
+      match_states (RTL.Callstate s f args, m)
+                   (LTL.Callstate ts tf ls, m')
   | match_states_return:
       forall s res m ts ls m' sg
         (STACKS: match_stackframes s ts sg)
@@ -1598,8 +1598,8 @@ Inductive match_states: RTL.state -> LTL.state -> Prop :=
         (AG: agree_callee_save (parent_locset ts) ls)
         (MEM: Mem.extends m m')
         (WTRES: Val.has_type res (proj_sig_res sg)),
-      match_states (RTL.Returnstate s res m)
-                   (LTL.Returnstate ts ls m').
+      match_states (RTL.Returnstate s res, m)
+                   (LTL.Returnstate ts ls, m').
 
 Lemma match_stackframes_change_sig:
   forall s ts sg sg',
@@ -2166,7 +2166,7 @@ Proof.
   intros. inv H.
   exploit function_ptr_translated; eauto. intros [tf [FIND TR]].
   exploit sig_function_translated; eauto. intros SIG.
-  exists (LTL.Callstate nil tf (Locmap.init Vundef) m0); split.
+  exists (LTL.Callstate nil tf (Locmap.init Vundef), m0); split.
   econstructor; eauto.
   eapply Genv.init_mem_transf_partial; eauto. 
   rewrite symbols_preserved. 

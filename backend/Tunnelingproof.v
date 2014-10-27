@@ -217,45 +217,45 @@ Inductive match_stackframes: stackframe -> stackframe -> Prop :=
          (Stackframe f sp ls0 bb)
          (Stackframe (tunnel_function f) sp ls0 (tunneled_block f bb)).
 
-Inductive match_states: state -> state -> Prop :=
+Inductive match_states: state * mem -> state * mem -> Prop :=
   | match_states_intro:
       forall s f sp pc ls m ts,
       list_forall2 match_stackframes s ts ->
-      match_states (State s f sp pc ls m)
-                   (State ts (tunnel_function f) sp (branch_target f pc) ls m)
+      match_states (State s f sp pc ls, m)
+                   (State ts (tunnel_function f) sp (branch_target f pc) ls, m)
   | match_states_block:
       forall s f sp bb ls m ts,
       list_forall2 match_stackframes s ts ->
-      match_states (Block s f sp bb ls m)
-                   (Block ts (tunnel_function f) sp (tunneled_block f bb) ls m)
+      match_states (Block s f sp bb ls, m)
+                   (Block ts (tunnel_function f) sp (tunneled_block f bb) ls, m)
   | match_states_interm:
       forall s f sp pc bb ls m ts,
       list_forall2 match_stackframes s ts ->
-      match_states (Block s f sp (Lbranch pc :: bb) ls m)
-                   (State ts (tunnel_function f) sp (branch_target f pc) ls m)
+      match_states (Block s f sp (Lbranch pc :: bb) ls, m)
+                   (State ts (tunnel_function f) sp (branch_target f pc) ls, m)
   | match_states_call:
       forall s f ls m ts,
       list_forall2 match_stackframes s ts ->
-      match_states (Callstate s f ls m)
-                   (Callstate ts (tunnel_fundef f) ls m)
+      match_states (Callstate s f ls, m)
+                   (Callstate ts (tunnel_fundef f) ls, m)
   | match_states_return:
       forall s ls m ts,
       list_forall2 match_stackframes s ts ->
-      match_states (Returnstate s ls m)
-                   (Returnstate ts ls m).
+      match_states (Returnstate s ls, m)
+                   (Returnstate ts ls, m).
 
 (** To preserve non-terminating behaviours, we show that the transformed
   code cannot take an infinity of "zero transition" cases.
   We use the following [measure] function over source states,
   which decreases strictly in the "zero transition" case. *)
 
-Definition measure (st: state) : nat :=
+Definition measure (st: state * mem) : nat :=
   match st with
-  | State s f sp pc ls m => (count_gotos f pc * 2)%nat
-  | Block s f sp (Lbranch pc :: _) ls m => (count_gotos f pc * 2 + 1)%nat
-  | Block s f sp bb ls m => 0%nat
-  | Callstate s f ls m => 0%nat
-  | Returnstate s ls m => 0%nat
+  | (State s f sp pc ls, m) => (count_gotos f pc * 2)%nat
+  | (Block s f sp (Lbranch pc :: _) ls, m) => (count_gotos f pc * 2 + 1)%nat
+  | (Block s f sp bb ls, m) => 0%nat
+  | (Callstate s f ls, m) => 0%nat
+  | (Returnstate s ls, m) => 0%nat
   end.
 
 Lemma match_parent_locset:
@@ -276,9 +276,9 @@ Proof.
 
   (* entering a block *)
   assert (DEFAULT: branch_target f pc = pc ->
-    (exists st2' : state,
-     step tge (State ts (tunnel_function f) sp (branch_target f pc) rs m) E0 st2'
-     /\ match_states (Block s f sp bb rs m) st2')).
+    (exists st2' : state * mem,
+     step tge (State ts (tunnel_function f) sp (branch_target f pc) rs, m) E0 st2'
+     /\ match_states (Block s f sp bb rs, m) st2')).
   intros. rewrite H0. econstructor; split. 
   econstructor. simpl. rewrite PTree.gmap1. rewrite H. simpl. eauto. 
   econstructor; eauto.
@@ -387,7 +387,7 @@ Lemma transf_initial_states:
   exists st2, initial_state tprog st2 /\ match_states st1 st2.
 Proof.
   intros. inversion H. 
-  exists (Callstate nil (tunnel_fundef f) (Locmap.init Vundef) m0); split.
+  exists (Callstate nil (tunnel_fundef f) (Locmap.init Vundef), m0); split.
   econstructor; eauto.
   apply Genv.init_mem_transf; auto.
   change (prog_main tprog) with (prog_main prog).

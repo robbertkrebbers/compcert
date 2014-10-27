@@ -403,7 +403,7 @@ Lemma tr_move_correct:
   forall r1 ns r2 nd cs f sp rs m,
   tr_move f.(fn_code) ns r1 nd r2 ->
   exists rs',
-  star (step tge) (State cs f sp ns rs m) E0 (State cs f sp nd rs' m) /\
+  star (step tge) (State cs f sp ns rs, m) E0 (State cs f sp nd rs', m) /\
   rs'#r2 = rs#r1 /\
   (forall r, r <> r2 -> rs'#r = rs#r).
 Proof.
@@ -461,7 +461,7 @@ Definition transl_expr_prop
     (ME: match_env map e le rs)
     (EXT: Mem.extends m tm),
   exists rs', exists tm',
-     star (step tge) (State cs f sp ns rs tm) E0 (State cs f sp nd rs' tm')
+     star (step tge) (State cs f sp ns rs, tm) E0 (State cs f sp nd rs', tm')
   /\ match_env map (set_optvar dst v e) le rs'
   /\ Val.lessdef v rs'#rd
   /\ (forall r, In r pr -> rs'#r = rs#r)
@@ -475,7 +475,7 @@ Definition transl_exprlist_prop
     (ME: match_env map e le rs)
     (EXT: Mem.extends m tm),
   exists rs', exists tm',
-     star (step tge) (State cs f sp ns rs tm) E0 (State cs f sp nd rs' tm')
+     star (step tge) (State cs f sp ns rs, tm) E0 (State cs f sp nd rs', tm')
   /\ match_env map e le rs'
   /\ Val.lessdef_list vl rs'##rl
   /\ (forall r, In r pr -> rs'#r = rs#r)
@@ -489,7 +489,7 @@ Definition transl_condexpr_prop
     (ME: match_env map e le rs)
     (EXT: Mem.extends m tm),
   exists rs', exists tm',
-     plus (step tge) (State cs f sp ns rs tm) E0 (State cs f sp (if v then ntrue else nfalse) rs' tm')
+     plus (step tge) (State cs f sp ns rs, tm) E0 (State cs f sp (if v then ntrue else nfalse) rs', tm')
   /\ match_env map e le rs'
   /\ (forall r, In r pr -> rs'#r = rs#r)
   /\ Mem.extends m tm'.
@@ -923,7 +923,7 @@ Definition transl_exitexpr_prop
     (ME: match_env map e le rs)
     (EXT: Mem.extends m tm),
   exists nd, exists rs', exists tm',
-     star (step tge) (State cs f sp ns rs tm) E0 (State cs f sp nd rs' tm')
+     star (step tge) (State cs f sp ns rs, tm) E0 (State cs f sp nd rs', tm')
   /\ nth_error nexits x = Some nd
   /\ match_env map e le rs'
   /\ Mem.extends m tm'.
@@ -990,13 +990,13 @@ Fixpoint size_cont (k: cont) : nat :=
   | _ => 0%nat
   end.
 
-Definition measure_state (S: CminorSel.state) :=
+Definition measure_state (S: CminorSel.state * mem) :=
   match S with
-  | CminorSel.State _ s k _ _ _ => (size_stmt s + size_cont k, size_stmt s)
-  | _                           => (0, 0)
+  | (CminorSel.State _ s k _ _, _) => (size_stmt s + size_cont k, size_stmt s)
+  | _                              => (0, 0)
   end.
 
-Definition lt_state (S1 S2: CminorSel.state) :=
+Definition lt_state (S1 S2: CminorSel.state * mem) :=
   lex_ord lt lt (measure_state S1) (measure_state S2).
 
 Lemma lt_state_intro:
@@ -1004,8 +1004,8 @@ Lemma lt_state_intro:
   size_stmt s1 + size_cont k1 < size_stmt s2 + size_cont k2
   \/ (size_stmt s1 + size_cont k1 = size_stmt s2 + size_cont k2
       /\ size_stmt s1 < size_stmt s2) ->
-  lt_state (CminorSel.State f1 s1 k1 sp1 e1 m1)
-           (CminorSel.State f2 s2 k2 sp2 e2 m2).
+  lt_state (CminorSel.State f1 s1 k1 sp1 e1, m1)
+           (CminorSel.State f2 s2 k2 sp2 e2, m2).
 Proof.
   intros. unfold lt_state. simpl. destruct H as [A | [A B]].
   left. auto.
@@ -1086,7 +1086,7 @@ with match_stacks: CminorSel.cont -> list RTL.stackframe -> Prop :=
       tr_cont tf.(fn_code) map k n nexits ngoto nret rret cs ->
       match_stacks (Kcall optid f sp e k) (Stackframe r tf sp n rs :: cs).
 
-Inductive match_states: CminorSel.state -> RTL.state -> Prop :=
+Inductive match_states: CminorSel.state * mem -> RTL.state * mem -> Prop :=
   | match_state:
       forall f s k sp e m tm cs tf ns rs map ncont nexits ngoto nret rret
         (MWF: map_wf map)
@@ -1095,23 +1095,23 @@ Inductive match_states: CminorSel.state -> RTL.state -> Prop :=
         (TK: tr_cont tf.(fn_code) map k ncont nexits ngoto nret rret cs)
         (ME: match_env map e nil rs)
         (MEXT: Mem.extends m tm),
-      match_states (CminorSel.State f s k sp e m)
-                   (RTL.State cs tf sp ns rs tm)
+      match_states (CminorSel.State f s k sp e, m)
+                   (RTL.State cs tf sp ns rs, tm)
   | match_callstate:
       forall f args targs k m tm cs tf
         (TF: transl_fundef f = OK tf)
         (MS: match_stacks k cs)
         (LD: Val.lessdef_list args targs)
         (MEXT: Mem.extends m tm),
-      match_states (CminorSel.Callstate f args k m)
-                   (RTL.Callstate cs tf targs tm)
+      match_states (CminorSel.Callstate f args k, m)
+                   (RTL.Callstate cs tf targs, tm)
   | match_returnstate:
       forall v tv k m tm cs
         (MS: match_stacks k cs)
         (LD: Val.lessdef v tv)
         (MEXT: Mem.extends m tm),
-      match_states (CminorSel.Returnstate v k m)
-                   (RTL.Returnstate cs tv tm).
+      match_states (CminorSel.Returnstate v k, m)
+                   (RTL.Returnstate cs tv, tm).
 
 Lemma match_stacks_call_cont:
   forall c map k ncont nexits ngoto nret rret cs,

@@ -1008,7 +1008,7 @@ Inductive sound_stack: block_classification -> list stackframe -> mem -> block -
         (CONTENTS: bmatch bc' m sp am.(am_stack)),
       sound_stack bc (Stackframe res f (Vptr sp Int.zero) pc e :: stk) m bound.
 
-Inductive sound_state: state -> Prop :=
+Inductive sound_state: state * mem -> Prop :=
   | sound_regular_state:
       forall s f sp pc e m ae am bc
         (STK: sound_stack bc s m sp)
@@ -1018,7 +1018,7 @@ Inductive sound_state: state -> Prop :=
         (MM: mmatch bc m am)
         (GE: genv_match bc ge)
         (SP: bc sp = BCstack),
-      sound_state (State s f (Vptr sp Int.zero) pc e m)
+      sound_state (State s f (Vptr sp Int.zero) pc e, m)
   | sound_call_state:
       forall s fd args m bc
         (STK: sound_stack bc s m (Mem.nextblock m))
@@ -1027,7 +1027,7 @@ Inductive sound_state: state -> Prop :=
         (MM: mmatch bc m mtop)
         (GE: genv_match bc ge)
         (NOSTK: bc_nostack bc),
-      sound_state (Callstate s fd args m)
+      sound_state (Callstate s fd args, m)
   | sound_return_state:
       forall s v m bc
         (STK: sound_stack bc s m (Mem.nextblock m))
@@ -1036,7 +1036,7 @@ Inductive sound_state: state -> Prop :=
         (MM: mmatch bc m mtop)
         (GE: genv_match bc ge)
         (NOSTK: bc_nostack bc),
-      sound_state (Returnstate s v m).
+      sound_state (Returnstate s v, m).
 
 (** Properties of the [sound_stack] invariant on call stacks. *)
 
@@ -1152,7 +1152,7 @@ Lemma sound_succ_state:
   genv_match bc ge ->
   bc sp = BCstack ->
   sound_stack bc s m' sp ->
-  sound_state (State s f (Vptr sp Int.zero) pc' e' m').
+  sound_state (State s f (Vptr sp Int.zero) pc' e', m').
 Proof.
   intros. exploit analyze_succ; eauto. intros (ae'' & am'' & AN & EM & MM).
   econstructor; eauto. 
@@ -1769,7 +1769,7 @@ Definition avalue (a: VA.t) (r: reg) : aval :=
 
 Lemma avalue_sound:
   forall prog s f sp pc e m r,
-  sound_state prog (State s f (Vptr sp Int.zero) pc e m) ->
+  sound_state prog (State s f (Vptr sp Int.zero) pc e, m) ->
   exists bc,
      vmatch bc e#r (avalue (analyze (romem_for_program prog) f)!!pc r)
   /\ genv_match bc (Genv.globalenv prog)
@@ -1786,7 +1786,7 @@ Definition aaddr (a: VA.t) (r: reg) : aptr :=
 
 Lemma aaddr_sound:
   forall prog s f sp pc e m r b ofs,
-  sound_state prog (State s f (Vptr sp Int.zero) pc e m) ->
+  sound_state prog (State s f (Vptr sp Int.zero) pc e, m) ->
   e#r = Vptr b ofs ->
   exists bc,
      pmatch bc b ofs (aaddr (analyze (romem_for_program prog) f)!!pc r)
@@ -1805,7 +1805,7 @@ Definition aaddressing (a: VA.t) (addr: addressing) (args: list reg) : aptr :=
 
 Lemma aaddressing_sound:
   forall prog s f sp pc e m addr args b ofs,
-  sound_state prog (State s f (Vptr sp Int.zero) pc e m) ->
+  sound_state prog (State s f (Vptr sp Int.zero) pc e, m) ->
   eval_addressing (Genv.globalenv prog) (Vptr sp Int.zero) addr e##args = Some (Vptr b ofs) ->
   exists bc,
      pmatch bc b ofs (aaddressing (analyze (romem_for_program prog) f)!!pc addr args)

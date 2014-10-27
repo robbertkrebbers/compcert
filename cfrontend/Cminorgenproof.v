@@ -1576,7 +1576,7 @@ Inductive match_cont: Csharpminor.cont -> Cminor.cont -> compilenv -> exit_env -
                  cenv' nil
                  (Frame cenv tfn e le te sp lo hi :: cs).
 
-Inductive match_states: Csharpminor.state -> Cminor.state -> Prop :=
+Inductive match_states: Csharpminor.state * mem -> Cminor.state * mem -> Prop :=
   | match_state:
       forall fn s k e le m tfn ts tk sp te tm cenv xenv f lo hi cs sz
       (TRF: transl_funbody cenv sz fn = OK tfn)
@@ -1586,8 +1586,8 @@ Inductive match_states: Csharpminor.state -> Cminor.state -> Prop :=
                (Frame cenv tfn e le te sp lo hi :: cs)
                (Mem.nextblock m) (Mem.nextblock tm))
       (MK: match_cont k tk cenv xenv cs),
-      match_states (Csharpminor.State fn s k e le m)
-                   (State tfn ts tk (Vptr sp Int.zero) te tm)
+      match_states (Csharpminor.State fn s k e le, m)
+                   (State tfn ts tk (Vptr sp Int.zero) te, tm)
   | match_state_seq:
       forall fn s1 s2 k e le m tfn ts1 tk sp te tm cenv xenv f lo hi cs sz
       (TRF: transl_funbody cenv sz fn = OK tfn)
@@ -1597,8 +1597,8 @@ Inductive match_states: Csharpminor.state -> Cminor.state -> Prop :=
                (Frame cenv tfn e le te sp lo hi :: cs)
                (Mem.nextblock m) (Mem.nextblock tm))
       (MK: match_cont (Csharpminor.Kseq s2 k) tk cenv xenv cs),
-      match_states (Csharpminor.State fn (Csharpminor.Sseq s1 s2) k e le m)
-                   (State tfn ts1 tk (Vptr sp Int.zero) te tm)
+      match_states (Csharpminor.State fn (Csharpminor.Sseq s1 s2) k e le, m)
+                   (State tfn ts1 tk (Vptr sp Int.zero) te, tm)
   | match_callstate:
       forall fd args k m tfd targs tk tm f cs cenv
       (TR: transl_fundef fd = OK tfd)
@@ -1607,16 +1607,16 @@ Inductive match_states: Csharpminor.state -> Cminor.state -> Prop :=
       (MK: match_cont k tk cenv nil cs)
       (ISCC: Csharpminor.is_call_cont k)
       (ARGSINJ: val_list_inject f args targs),
-      match_states (Csharpminor.Callstate fd args k m)
-                   (Callstate tfd targs tk tm)
+      match_states (Csharpminor.Callstate fd args k, m)
+                   (Callstate tfd targs tk, tm)
   | match_returnstate:
       forall v k m tv tk tm f cs cenv
       (MINJ: Mem.inject f m tm)
       (MCS: match_callstack f m tm cs (Mem.nextblock m) (Mem.nextblock tm))
       (MK: match_cont k tk cenv nil cs)
       (RESINJ: val_inject f v tv),
-      match_states (Csharpminor.Returnstate v k m)
-                   (Returnstate tv tk tm).
+      match_states (Csharpminor.Returnstate v k, m)
+                   (Returnstate tv tk, tm).
 
 Remark val_inject_function_pointer:
   forall bound v fd f tv,
@@ -1644,8 +1644,8 @@ Lemma match_is_call_cont:
   match_cont k tk cenv xenv cs ->
   Csharpminor.is_call_cont k ->
   exists tk',
-    star (step tge) (State tfn Sskip tk sp te tm)
-                 E0 (State tfn Sskip tk' sp te tm)
+    star (step tge) (State tfn Sskip tk sp te, tm)
+                 E0 (State tfn Sskip tk' sp te, tm)
     /\ is_call_cont tk'
     /\ match_cont k tk' cenv nil cs.
 Proof.
@@ -1738,7 +1738,7 @@ Lemma switch_descent:
   exists k',
   transl_lblstmt_cont cenv xenv ls k k'
   /\ (forall f sp e m,
-      plus (step tge) (State f s k sp e m) E0 (State f body k' sp e m)).
+      plus (step tge) (State f s k sp e, m) E0 (State f body k' sp e, m)).
 Proof.
   induction ls; intros. 
 - monadInv H. econstructor; split.
@@ -1758,8 +1758,8 @@ Lemma switch_ascent:
   forall k k1,
   transl_lblstmt_cont cenv xenv ls k k1 ->
   exists k2,
-  star (step tge) (State f (Sexit n) k1 sp e m)
-               E0 (State f (Sexit O) k2 sp e m)
+  star (step tge) (State f (Sexit n) k1 sp e, m)
+               E0 (State f (Sexit O) k2 sp e, m)
   /\ transl_lblstmt_cont cenv xenv ls' k k2.
 Proof.
   induction 1; intros. 
@@ -1792,8 +1792,8 @@ Lemma switch_match_states:
     (MK: match_cont k tk cenv xenv cs)
     (TK: transl_lblstmt_cont cenv xenv ls tk tk'),
   exists S,
-  plus (step tge) (State tfn (Sexit O) tk' (Vptr sp Int.zero) te tm) E0 S
-  /\ match_states (Csharpminor.State fn (seq_of_lbl_stmt ls) k e le m) S.
+  plus (step tge) (State tfn (Sexit O) tk' (Vptr sp Int.zero) te, tm) E0 S
+  /\ match_states (Csharpminor.State fn (seq_of_lbl_stmt ls) k e le, m) S.
 Proof.
   intros. inv TK. 
 - econstructor; split. eapply plus_two. constructor. constructor. auto. 
@@ -1930,9 +1930,9 @@ Fixpoint seq_left_depth (s: Csharpminor.stmt) : nat :=
   | _ => O
   end.
 
-Definition measure (S: Csharpminor.state) : nat :=
+Definition measure (S: Csharpminor.state * mem) : nat :=
   match S with
-  | Csharpminor.State fn s k e le m => seq_left_depth s
+  | (Csharpminor.State fn s k e le, m) => seq_left_depth s
   | _ => O
   end.
 
@@ -2054,7 +2054,7 @@ Opaque PTree.set.
 (* ifthenelse *)
   monadInv TR.
   exploit transl_expr_correct; eauto. intros [tv [EVAL VINJ]].
-  left; exists (State tfn (if b then x0 else x1) tk (Vptr sp Int.zero) te tm); split.
+  left; exists (State tfn (if b then x0 else x1) tk (Vptr sp Int.zero) te, tm); split.
   apply plus_one. eapply step_ifthenelse; eauto. eapply bool_of_val_inject; eauto.
   econstructor; eauto. destruct b; auto.
 

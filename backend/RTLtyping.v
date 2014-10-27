@@ -706,24 +706,24 @@ Inductive wt_stackframes: list stackframe -> signature -> Prop :=
       wt_stackframes s (fn_sig f) ->
       wt_stackframes (Stackframe res f sp pc rs :: s) sg.
 
-Inductive wt_state: state -> Prop :=
+Inductive wt_state: state * mem -> Prop :=
   | wt_state_intro:
       forall s f sp pc rs m env
         (WT_STK: wt_stackframes s (fn_sig f))
         (WT_FN: wt_function f env)
         (WT_RS: wt_regset env rs),
-      wt_state (State s f sp pc rs m)
+      wt_state (State s f sp pc rs, m)
   | wt_state_call:
       forall s f args m,
       wt_stackframes s (funsig f) ->
       wt_fundef f ->
       Val.has_type_list args (sig_args (funsig f)) ->
-      wt_state (Callstate s f args m)
+      wt_state (Callstate s f args, m)
   | wt_state_return:
       forall s v m sg,
       wt_stackframes s sg ->
       Val.has_type v (proj_sig_res sg) ->
-      wt_state (Returnstate s v m).
+      wt_state (Returnstate s v, m).
 
 Remark wt_stackframes_change_sig:
   forall s sg1 sg2,
@@ -812,7 +812,7 @@ Qed.
 
 Lemma wt_instr_inv:
   forall s f sp pc rs m i,
-  wt_state (State s f sp pc rs m) ->
+  wt_state (State s f sp pc rs, m) ->
   f.(fn_code)!pc = Some i ->
   exists env, wt_instr f env i /\ wt_regset env rs.
 Proof.

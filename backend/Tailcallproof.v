@@ -346,28 +346,28 @@ Inductive match_stackframes: list stackframe -> list stackframe -> Prop :=
   over values and register states, and the corresponding ``extends''
   relation over memory states. *)
 
-Inductive match_states: state -> state -> Prop :=
+Inductive match_states: state * mem -> state * mem -> Prop :=
   | match_states_normal:
       forall s sp pc rs m s' rs' m' f
              (STACKS: match_stackframes s s')
              (RLD: regset_lessdef rs rs')
              (MLD: Mem.extends m m'),
-      match_states (State s f (Vptr sp Int.zero) pc rs m)
-                   (State s' (transf_function f) (Vptr sp Int.zero) pc rs' m')
+      match_states (State s f (Vptr sp Int.zero) pc rs, m)
+                   (State s' (transf_function f) (Vptr sp Int.zero) pc rs', m')
   | match_states_call:
       forall s f args m s' args' m',
       match_stackframes s s' ->
       Val.lessdef_list args args' ->
       Mem.extends m m' ->
-      match_states (Callstate s f args m)
-                   (Callstate s' (transf_fundef f) args' m')
+      match_states (Callstate s f args, m)
+                   (Callstate s' (transf_fundef f) args', m')
   | match_states_return:
       forall s v m s' v' m',
       match_stackframes s s' ->
       Val.lessdef v v' ->
       Mem.extends m m' ->
-      match_states (Returnstate s v m)
-                   (Returnstate s' v' m')
+      match_states (Returnstate s v, m)
+                   (Returnstate s' v', m')
   | match_states_interm:
       forall s sp pc rs m s' m' f r v'
              (STACKS: match_stackframes s s')
@@ -375,8 +375,8 @@ Inductive match_states: state -> state -> Prop :=
       is_return_spec f pc r ->
       f.(fn_stacksize) = 0 ->
       Val.lessdef (rs#r) v' ->
-      match_states (State s f (Vptr sp Int.zero) pc rs m)
-                   (Returnstate s' v' m').
+      match_states (State s f (Vptr sp Int.zero) pc rs, m)
+                   (Returnstate s' v', m').
 
 (** The last case of [match_states] corresponds to the execution
   of a move/nop/return sequence in the original code that was
@@ -395,12 +395,13 @@ Inductive match_states: state -> state -> Prop :=
   the original code makes a transition but the transformed code
   does not. *)
 
-Definition measure (st: state) : nat :=
-  match st with
-  | State s f sp pc rs m => (List.length s * (niter + 2) + return_measure f.(fn_code) pc + 1)%nat
-  | Callstate s f args m => 0%nat
-  | Returnstate s v m => (List.length s * (niter + 2))%nat
+Definition measure (st: state * mem) : nat :=
+  match fst st with
+  | State s f sp pc rs => (List.length s * (niter + 2) + return_measure f.(fn_code) pc + 1)%nat
+  | Callstate s f args => 0%nat
+  | Returnstate s v => (List.length s * (niter + 2))%nat
   end.
+Arguments measure !_ /.
 
 Ltac TransfInstr :=
   match goal with
@@ -438,7 +439,7 @@ Proof.
   assert (Val.lessdef_list (rs##args) (rs'##args)). apply regset_get_list; auto. 
   exploit eval_operation_lessdef; eauto. 
   intros [v' [EVAL' VLD]]. 
-  left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) pc' (rs'#res <- v') m'); split.
+  left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) pc' (rs'#res <- v'), m'); split.
   eapply exec_Iop; eauto.  rewrite <- EVAL'.
   apply eval_operation_preserved. exact symbols_preserved.
   econstructor; eauto. apply regset_set; auto.
@@ -454,7 +455,7 @@ Proof.
   intros [a' [ADDR' ALD]].
   exploit Mem.loadv_extends; eauto. 
   intros [v' [LOAD' VLD]].
-  left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) pc' (rs'#dst <- v') m'); split.
+  left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) pc' (rs'#dst <- v'), m'); split.
   eapply exec_Iload with (a := a'). eauto.  rewrite <- ADDR'.
   apply eval_addressing_preserved. exact symbols_preserved. eauto.
   econstructor; eauto. apply regset_set; auto.
@@ -466,7 +467,7 @@ Proof.
   intros [a' [ADDR' ALD]].
   exploit Mem.storev_extends. 2: eexact H1. eauto. eauto. apply RLD.  
   intros [m'1 [STORE' MLD']].
-  left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) pc' rs' m'1); split.
+  left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) pc' rs', m'1); split.
   eapply exec_Istore with (a := a'). eauto.  rewrite <- ADDR'.
   apply eval_addressing_preserved. exact symbols_preserved. eauto.
   destruct a; simpl in H1; try discriminate.
@@ -480,14 +481,14 @@ Proof.
     apply Mem.range_perm_free. rewrite stacksize_preserved. rewrite H7. 
     red; intros; omegaContradiction.
   destruct X as [m'' FREE].
-  left. exists (Callstate s' (transf_fundef fd) (rs'##args) m''); split.
+  left. exists (Callstate s' (transf_fundef fd) (rs'##args), m''); split.
   eapply exec_Itailcall; eauto. apply sig_preserved. 
   constructor. eapply match_stackframes_tail; eauto. apply regset_get_list; auto.
   eapply Mem.free_right_extends; eauto.
   rewrite stacksize_preserved. rewrite H7. intros. omegaContradiction.
 (* call that remains a call *)
   left. exists (Callstate (Stackframe res (transf_function f) (Vptr sp0 Int.zero) pc' rs' :: s')
-                          (transf_fundef fd) (rs'##args) m'); split.
+                          (transf_fundef fd) (rs'##args), m'); split.
   eapply exec_Icall; eauto. apply sig_preserved. 
   constructor. constructor; auto. apply regset_get_list; auto. auto. 
 
@@ -495,7 +496,7 @@ Proof.
   exploit find_function_translated; eauto. intro FIND'.
   exploit Mem.free_parallel_extends; eauto. intros [m'1 [FREE EXT]].
   TransfInstr.
-  left. exists (Callstate s' (transf_fundef fd) (rs'##args) m'1); split.
+  left. exists (Callstate s' (transf_fundef fd) (rs'##args), m'1); split.
   eapply exec_Itailcall; eauto. apply sig_preserved.
   rewrite stacksize_preserved; auto.
   constructor. auto.  apply regset_get_list; auto. auto. 
@@ -505,7 +506,7 @@ Proof.
   assert (Val.lessdef_list (rs##args) (rs'##args)). apply regset_get_list; auto. 
   exploit builtin_call_mem_extends; eauto.
   intros [v' [m'1 [A [B [C D]]]]].
-  left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) pc' (rs'#res <- v') m'1); split.
+  left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) pc' (rs'#res <- v'), m'1); split.
   eapply exec_Ibuiltin; eauto.
   eapply builtin_call_symbols_preserved; eauto.
   exact symbols_preserved. exact varinfo_preserved.
@@ -513,14 +514,14 @@ Proof.
 
 (* cond *)
   TransfInstr. 
-  left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) (if b then ifso else ifnot) rs' m'); split.
+  left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) (if b then ifso else ifnot) rs', m'); split.
   eapply exec_Icond; eauto.
   apply eval_condition_lessdef with (rs##args) m; auto. apply regset_get_list; auto.
   constructor; auto. 
 
 (* jumptable *)
   TransfInstr. 
-  left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) pc' rs' m'); split.
+  left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) pc' rs', m'); split.
   eapply exec_Ijumptable; eauto.
   generalize (RLD arg). rewrite H0. intro. inv H2. auto.
   constructor; auto. 
@@ -528,7 +529,7 @@ Proof.
 (* return *)
   exploit Mem.free_parallel_extends; eauto. intros [m'1 [FREE EXT]].
   TransfInstr.
-  left. exists (Returnstate s' (regmap_optget or Vundef rs') m'1); split.
+  left. exists (Returnstate s' (regmap_optget or Vundef rs'), m'1); split.
   apply exec_Ireturn; auto. rewrite stacksize_preserved; auto.
   constructor. auto.
   destruct or; simpl. apply RLD. constructor.
@@ -566,7 +567,7 @@ Proof.
 (* external call *)
   exploit external_call_mem_extends; eauto.
   intros [res' [m2' [A [B [C D]]]]].
-  left. exists (Returnstate s' res' m2'); split.
+  left. exists (Returnstate s' res', m2'); split.
   simpl. econstructor; eauto.
   eapply external_call_symbols_preserved; eauto.
   exact symbols_preserved. exact varinfo_preserved.
@@ -579,7 +580,7 @@ Proof.
   apply exec_return. 
   constructor; auto. apply regset_set; auto. 
 (* return instr in source program, eliminated because of tailcall *)
-  right. split. unfold measure. simpl length. 
+  right. split. unfold measure, fst. simpl length. 
   change (S (length s) * (niter + 2))%nat
    with ((niter + 2) + (length s) * (niter + 2))%nat. 
   generalize (return_measure_bounds (fn_code f) pc). omega.  
@@ -594,7 +595,7 @@ Lemma transf_initial_states:
 Proof.
   intros. inv H. 
   exploit funct_ptr_translated; eauto. intro FIND.
-  exists (Callstate nil (transf_fundef f) nil m0); split.
+  exists (Callstate nil (transf_fundef f) nil, m0); split.
   econstructor; eauto. apply Genv.init_mem_transf. auto.
   replace (prog_main tprog) with (prog_main prog).
   rewrite symbols_preserved. eauto.

@@ -502,23 +502,19 @@ Inductive state: Type :=
       (f: function)
       (s: statement)
       (k: cont)
-      (e: env)
-      (m: mem) : state
+      (e: env) : state
   | ExprState                           (**r reduction of an expression *)
       (f: function)
       (r: expr)
       (k: cont)
-      (e: env)
-      (m: mem) : state
+      (e: env) : state
   | Callstate                           (**r calling a function *)
       (fd: fundef)
       (args: list val)
-      (k: cont)
-      (m: mem) : state
+      (k: cont) : state
   | Returnstate                         (**r returning from a function *)
       (res: val)
-      (k: cont)
-      (m: mem) : state
+      (k: cont) : state
   | Stuckstate.                         (**r undefined behavior occurred *)
                  
 (** Find the statement and manufacture the continuation 
@@ -575,184 +571,184 @@ with find_label_ls (lbl: label) (sl: labeled_statements) (k: cont)
 This makes it easy to express different reduction strategies for expressions:
 the second group of rules can be reused as is. *)
 
-Inductive estep: state -> trace -> state -> Prop :=
+Inductive estep: state * mem -> trace -> state * mem -> Prop :=
 
   | step_lred: forall C f a k e m a' m',
       lred e a m a' m' ->
       context LV RV C ->
-      estep (ExprState f (C a) k e m)
-         E0 (ExprState f (C a') k e m')
+      estep (ExprState f (C a) k e, m)
+         E0 (ExprState f (C a') k e, m')
 
   | step_rred: forall C f a k e m t a' m',
       rred a m t a' m' ->
       context RV RV C ->
-      estep (ExprState f (C a) k e m)
-          t (ExprState f (C a') k e m')
+      estep (ExprState f (C a) k e, m)
+          t (ExprState f (C a') k e, m')
 
   | step_call: forall C f a k e m fd vargs ty,
       callred a fd vargs ty ->
       context RV RV C ->
-      estep (ExprState f (C a) k e m)
-         E0 (Callstate fd vargs (Kcall f e C ty k) m)
+      estep (ExprState f (C a) k e, m)
+         E0 (Callstate fd vargs (Kcall f e C ty k), m)
 
   | step_stuck: forall C f a k e m K,
       context K RV C -> ~(imm_safe e K a m) ->
-      estep (ExprState f (C a) k e m)
-         E0 Stuckstate.
+      estep (ExprState f (C a) k e, m)
+         E0 (Stuckstate,m).
 
-Inductive sstep: state -> trace -> state -> Prop :=
+Inductive sstep: state * mem -> trace -> state * mem -> Prop :=
 
   | step_do_1: forall f x k e m,
-      sstep (State f (Sdo x) k e m)
-         E0 (ExprState f x (Kdo k) e m)
+      sstep (State f (Sdo x) k e, m)
+         E0 (ExprState f x (Kdo k) e, m)
   | step_do_2: forall f v ty k e m,
-      sstep (ExprState f (Eval v ty) (Kdo k) e m)
-         E0 (State f Sskip k e m)
+      sstep (ExprState f (Eval v ty) (Kdo k) e, m)
+         E0 (State f Sskip k e, m)
 
   | step_seq:  forall f s1 s2 k e m,
-      sstep (State f (Ssequence s1 s2) k e m)
-         E0 (State f s1 (Kseq s2 k) e m)
+      sstep (State f (Ssequence s1 s2) k e, m)
+         E0 (State f s1 (Kseq s2 k) e, m)
   | step_skip_seq: forall f s k e m,
-      sstep (State f Sskip (Kseq s k) e m)
-         E0 (State f s k e m)
+      sstep (State f Sskip (Kseq s k) e, m)
+         E0 (State f s k e, m)
   | step_continue_seq: forall f s k e m,
-      sstep (State f Scontinue (Kseq s k) e m)
-         E0 (State f Scontinue k e m)
+      sstep (State f Scontinue (Kseq s k) e, m)
+         E0 (State f Scontinue k e, m)
   | step_break_seq: forall f s k e m,
-      sstep (State f Sbreak (Kseq s k) e m)
-         E0 (State f Sbreak k e m)
+      sstep (State f Sbreak (Kseq s k) e, m)
+         E0 (State f Sbreak k e, m)
 
   | step_ifthenelse_1: forall f a s1 s2 k e m,
-      sstep (State f (Sifthenelse a s1 s2) k e m)
-         E0 (ExprState f a (Kifthenelse s1 s2 k) e m)
+      sstep (State f (Sifthenelse a s1 s2) k e, m)
+         E0 (ExprState f a (Kifthenelse s1 s2 k) e, m)
   | step_ifthenelse_2:  forall f v ty s1 s2 k e m b,
       bool_val v ty = Some b ->
-      sstep (ExprState f (Eval v ty) (Kifthenelse s1 s2 k) e m)
-         E0 (State f (if b then s1 else s2) k e m)
+      sstep (ExprState f (Eval v ty) (Kifthenelse s1 s2 k) e, m)
+         E0 (State f (if b then s1 else s2) k e, m)
 
   | step_while: forall f x s k e m,
-      sstep (State f (Swhile x s) k e m)
-        E0 (ExprState f x (Kwhile1 x s k) e m)
+      sstep (State f (Swhile x s) k e, m)
+        E0 (ExprState f x (Kwhile1 x s k) e, m)
   | step_while_false: forall f v ty x s k e m,
       bool_val v ty = Some false ->
-      sstep (ExprState f (Eval v ty) (Kwhile1 x s k) e m)
-        E0 (State f Sskip k e m)
+      sstep (ExprState f (Eval v ty) (Kwhile1 x s k) e, m)
+        E0 (State f Sskip k e, m)
   | step_while_true: forall f v ty x s k e m ,
       bool_val v ty = Some true ->
-      sstep (ExprState f (Eval v ty) (Kwhile1 x s k) e m)
-        E0 (State f s (Kwhile2 x s k) e m)
+      sstep (ExprState f (Eval v ty) (Kwhile1 x s k) e, m)
+        E0 (State f s (Kwhile2 x s k) e, m)
   | step_skip_or_continue_while: forall f s0 x s k e m,
       s0 = Sskip \/ s0 = Scontinue ->
-      sstep (State f s0 (Kwhile2 x s k) e m)
-        E0 (State f (Swhile x s) k e m)
+      sstep (State f s0 (Kwhile2 x s k) e, m)
+        E0 (State f (Swhile x s) k e, m)
   | step_break_while: forall f x s k e m,
-      sstep (State f Sbreak (Kwhile2 x s k) e m)
-        E0 (State f Sskip k e m)
+      sstep (State f Sbreak (Kwhile2 x s k) e, m)
+        E0 (State f Sskip k e, m)
 
   | step_dowhile: forall f a s k e m,
-      sstep (State f (Sdowhile a s) k e m)
-        E0 (State f s (Kdowhile1 a s k) e m)
+      sstep (State f (Sdowhile a s) k e, m)
+        E0 (State f s (Kdowhile1 a s k) e, m)
   | step_skip_or_continue_dowhile: forall f s0 x s k e m,
       s0 = Sskip \/ s0 = Scontinue ->
-      sstep (State f s0 (Kdowhile1 x s k) e m)
-         E0 (ExprState f x (Kdowhile2 x s k) e m)
+      sstep (State f s0 (Kdowhile1 x s k) e, m)
+         E0 (ExprState f x (Kdowhile2 x s k) e, m)
   | step_dowhile_false: forall f v ty x s k e m,
       bool_val v ty = Some false ->
-      sstep (ExprState f (Eval v ty) (Kdowhile2 x s k) e m)
-         E0 (State f Sskip k e m)
+      sstep (ExprState f (Eval v ty) (Kdowhile2 x s k) e, m)
+         E0 (State f Sskip k e, m)
   | step_dowhile_true: forall f v ty x s k e m,
       bool_val v ty = Some true ->
-      sstep (ExprState f (Eval v ty) (Kdowhile2 x s k) e m)
-         E0 (State f (Sdowhile x s) k e m)
+      sstep (ExprState f (Eval v ty) (Kdowhile2 x s k) e, m)
+         E0 (State f (Sdowhile x s) k e, m)
   | step_break_dowhile: forall f a s k e m,
-      sstep (State f Sbreak (Kdowhile1 a s k) e m)
-         E0 (State f Sskip k e m)
+      sstep (State f Sbreak (Kdowhile1 a s k) e, m)
+         E0 (State f Sskip k e, m)
 
   | step_for_start: forall f a1 a2 a3 s k e m,
       a1 <> Sskip ->
-      sstep (State f (Sfor a1 a2 a3 s) k e m)
-         E0 (State f a1 (Kseq (Sfor Sskip a2 a3 s) k) e m)
+      sstep (State f (Sfor a1 a2 a3 s) k e, m)
+         E0 (State f a1 (Kseq (Sfor Sskip a2 a3 s) k) e, m)
   | step_for: forall f a2 a3 s k e m,
-      sstep (State f (Sfor Sskip a2 a3 s) k e m)
-         E0 (ExprState f a2 (Kfor2 a2 a3 s k) e m)
+      sstep (State f (Sfor Sskip a2 a3 s) k e, m)
+         E0 (ExprState f a2 (Kfor2 a2 a3 s k) e, m)
   | step_for_false: forall f v ty a2 a3 s k e m,
       bool_val v ty = Some false ->
-      sstep (ExprState f (Eval v ty) (Kfor2 a2 a3 s k) e m)
-         E0 (State f Sskip k e m)
+      sstep (ExprState f (Eval v ty) (Kfor2 a2 a3 s k) e, m)
+         E0 (State f Sskip k e, m)
   | step_for_true: forall f v ty a2 a3 s k e m,
       bool_val v ty = Some true ->
-      sstep (ExprState f (Eval v ty) (Kfor2 a2 a3 s k) e m)
-         E0 (State f s (Kfor3 a2 a3 s k) e m)
+      sstep (ExprState f (Eval v ty) (Kfor2 a2 a3 s k) e, m)
+         E0 (State f s (Kfor3 a2 a3 s k) e, m)
   | step_skip_or_continue_for3: forall f x a2 a3 s k e m,
       x = Sskip \/ x = Scontinue ->
-      sstep (State f x (Kfor3 a2 a3 s k) e m)
-         E0 (State f a3 (Kfor4 a2 a3 s k) e m)
+      sstep (State f x (Kfor3 a2 a3 s k) e, m)
+         E0 (State f a3 (Kfor4 a2 a3 s k) e, m)
   | step_break_for3: forall f a2 a3 s k e m,
-      sstep (State f Sbreak (Kfor3 a2 a3 s k) e m)
-         E0 (State f Sskip k e m)
+      sstep (State f Sbreak (Kfor3 a2 a3 s k) e, m)
+         E0 (State f Sskip k e, m)
   | step_skip_for4: forall f a2 a3 s k e m,
-      sstep (State f Sskip (Kfor4 a2 a3 s k) e m)
-         E0 (State f (Sfor Sskip a2 a3 s) k e m)
+      sstep (State f Sskip (Kfor4 a2 a3 s k) e, m)
+         E0 (State f (Sfor Sskip a2 a3 s) k e, m)
 
   | step_return_0: forall f k e m m',
       Mem.free_list m (blocks_of_env e) = Some m' ->
-      sstep (State f (Sreturn None) k e m)
-         E0 (Returnstate Vundef (call_cont k) m')
+      sstep (State f (Sreturn None) k e, m)
+         E0 (Returnstate Vundef (call_cont k), m')
   | step_return_1: forall f x k e m,
-      sstep (State f (Sreturn (Some x)) k e m)
-         E0 (ExprState f x (Kreturn k) e  m)
+      sstep (State f (Sreturn (Some x)) k e, m)
+         E0 (ExprState f x (Kreturn k) e, m)
   | step_return_2:  forall f v1 ty k e m v2 m',
       sem_cast v1 ty f.(fn_return) = Some v2 ->
       Mem.free_list m (blocks_of_env e) = Some m' ->
-      sstep (ExprState f (Eval v1 ty) (Kreturn k) e m)
-         E0 (Returnstate v2 (call_cont k) m')
+      sstep (ExprState f (Eval v1 ty) (Kreturn k) e, m)
+         E0 (Returnstate v2 (call_cont k), m')
   | step_skip_call: forall f k e m m',
       is_call_cont k ->
       Mem.free_list m (blocks_of_env e) = Some m' ->
-      sstep (State f Sskip k e m)
-         E0 (Returnstate Vundef k m')
+      sstep (State f Sskip k e, m)
+         E0 (Returnstate Vundef k, m')
 
   | step_switch: forall f x sl k e m,
-      sstep (State f (Sswitch x sl) k e m)
-         E0 (ExprState f x (Kswitch1 sl k) e m)
+      sstep (State f (Sswitch x sl) k e, m)
+         E0 (ExprState f x (Kswitch1 sl k) e, m)
   | step_expr_switch: forall f ty sl k e m v n,
       sem_switch_arg v ty = Some n ->
-      sstep (ExprState f (Eval v ty) (Kswitch1 sl k) e m)
-         E0 (State f (seq_of_labeled_statement (select_switch n sl)) (Kswitch2 k) e m)
+      sstep (ExprState f (Eval v ty) (Kswitch1 sl k) e, m)
+         E0 (State f (seq_of_labeled_statement (select_switch n sl)) (Kswitch2 k) e, m)
   | step_skip_break_switch: forall f x k e m,
       x = Sskip \/ x = Sbreak ->
-      sstep (State f x (Kswitch2 k) e m)
-         E0 (State f Sskip k e m)
+      sstep (State f x (Kswitch2 k) e, m)
+         E0 (State f Sskip k e, m)
   | step_continue_switch: forall f k e m,
-      sstep (State f Scontinue (Kswitch2 k) e m)
-         E0 (State f Scontinue k e m)
+      sstep (State f Scontinue (Kswitch2 k) e, m)
+         E0 (State f Scontinue k e, m)
 
   | step_label: forall f lbl s k e m,
-      sstep (State f (Slabel lbl s) k e m)
-         E0 (State f s k e m)
+      sstep (State f (Slabel lbl s) k e, m)
+         E0 (State f s k e, m)
 
   | step_goto: forall f lbl k e m s' k',
       find_label lbl f.(fn_body) (call_cont k) = Some (s', k') ->
-      sstep (State f (Sgoto lbl) k e m)
-         E0 (State f s' k' e m)
+      sstep (State f (Sgoto lbl) k e, m)
+         E0 (State f s' k' e, m)
 
   | step_internal_function: forall f vargs k m e m1 m2,
       list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
       alloc_variables empty_env m (f.(fn_params) ++ f.(fn_vars)) e m1 ->
       bind_parameters ge e m1 f.(fn_params) vargs m2 ->
-      sstep (Callstate (Internal f) vargs k m)
-         E0 (State f f.(fn_body) k e m2)
+      sstep (Callstate (Internal f) vargs k, m)
+         E0 (State f f.(fn_body) k e, m2)
 
   | step_external_function: forall ef targs tres vargs k m vres t m',
       external_call ef  ge vargs m t vres m' ->
-      sstep (Callstate (External ef targs tres) vargs k m)
-          t (Returnstate vres k m')
+      sstep (Callstate (External ef targs tres) vargs k, m)
+          t (Returnstate vres k, m')
 
   | step_returnstate: forall v f e C ty k m,
-      sstep (Returnstate v (Kcall f e C ty k) m)
-         E0 (ExprState f (C (Eval v ty)) k e m).
+      sstep (Returnstate v (Kcall f e C ty k), m)
+         E0 (ExprState f (C (Eval v ty)) k e, m).
 
-Definition step (S: state) (t: trace) (S': state) : Prop :=
+Definition step (S: state * mem) (t: trace) (S': state * mem) : Prop :=
   estep S t S' \/ sstep S t S'.
 
 End SEMANTICS.
@@ -764,20 +760,20 @@ End SEMANTICS.
   corresponding to the invocation of the ``main'' function of the program
   without arguments and with an empty continuation. *)
 
-Inductive initial_state (p: program): state -> Prop :=
+Inductive initial_state (p: program): state * mem -> Prop :=
   | initial_state_intro: forall b f m0,
       let ge := Genv.globalenv p in
       Genv.init_mem p = Some m0 ->
       Genv.find_symbol ge p.(prog_main) = Some b ->
       Genv.find_funct_ptr ge b = Some f ->
       type_of_fundef f = Tfunction Tnil type_int32s cc_default ->
-      initial_state p (Callstate f nil Kstop m0).
+      initial_state p (Callstate f nil Kstop, m0).
 
 (** A final state is a [Returnstate] with an empty continuation. *)
 
-Inductive final_state: state -> int -> Prop :=
+Inductive final_state: state * mem -> int -> Prop :=
   | final_state_intro: forall r m,
-      final_state (Returnstate (Vint r) Kstop m) r.
+      final_state (Returnstate (Vint r) Kstop, m) r.
 
 (** Wrapping up these definitions in a small-step semantics. *)
 

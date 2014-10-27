@@ -200,22 +200,22 @@ Proof.
 - auto.
 Qed.
 
-Inductive wt_state: state -> Prop :=
+Inductive wt_state: state * mem -> Prop :=
   | wt_regular_state: forall s f sp c rs m
         (WTSTK: wt_callstack s )
         (WTF: wt_function f = true)
         (WTC: wt_code f c = true)
         (WTRS: wt_locset rs),
-      wt_state (State s f sp c rs m)
+      wt_state (State s f sp c rs, m)
   | wt_call_state: forall s fd rs m
         (WTSTK: wt_callstack s)
         (WTFD: wt_fundef fd)
         (WTRS: wt_locset rs),
-      wt_state (Callstate s fd rs m)
+      wt_state (Callstate s fd rs, m)
   | wt_return_state: forall s rs m
         (WTSTK: wt_callstack s)
         (WTRS: wt_locset rs),
-      wt_state (Returnstate s rs m).
+      wt_state (Returnstate s rs, m).
 
 (** Preservation of state typing by transitions *)
 
@@ -340,7 +340,7 @@ End SOUNDNESS.
 
 Lemma wt_state_getstack:
   forall s f sp sl ofs ty rd c rs m,
-  wt_state (State s f sp (Lgetstack sl ofs ty rd :: c) rs m) ->
+  wt_state (State s f sp (Lgetstack sl ofs ty rd :: c) rs, m) ->
   slot_valid f sl ofs ty = true.
 Proof.
   intros. inv H. simpl in WTC; InvBooleans. auto.
@@ -348,7 +348,7 @@ Qed.
 
 Lemma wt_state_setstack:
   forall s f sp sl ofs ty r c rs m,
-  wt_state (State s f sp (Lsetstack r sl ofs ty :: c) rs m) ->
+  wt_state (State s f sp (Lsetstack r sl ofs ty :: c) rs, m) ->
   slot_valid f sl ofs ty = true /\ slot_writable sl = true.
 Proof.
   intros. inv H. simpl in WTC; InvBooleans. intuition.
@@ -356,7 +356,7 @@ Qed.
 
 Lemma wt_state_tailcall:
   forall s f sp sg ros c rs m,
-  wt_state (State s f sp (Ltailcall sg ros :: c) rs m) ->
+  wt_state (State s f sp (Ltailcall sg ros :: c) rs, m) ->
   size_arguments sg = 0.
 Proof.
   intros. inv H. simpl in WTC; InvBooleans. auto.
@@ -364,7 +364,7 @@ Qed.
 
 Lemma wt_state_annot:
   forall s f sp ef args c rs m,
-  wt_state (State s f sp (Lannot ef args :: c) rs m) ->
+  wt_state (State s f sp (Lannot ef args :: c) rs, m) ->
   forallb (loc_valid f) args = true.
 Proof.
   intros. inv H. simpl in WTC; InvBooleans. auto. 
@@ -372,7 +372,7 @@ Qed.
 
 Lemma wt_callstate_wt_regs:
   forall s f rs m,
-  wt_state (Callstate s f rs m) ->
+  wt_state (Callstate s f rs, m) ->
   forall r, Val.has_type (rs (R r)) (mreg_type r).
 Proof.
   intros. inv H. apply WTRS. 

@@ -22,6 +22,7 @@ Require Import Op.
 Require Import Registers.
 Require Import RTL.
 Require Import Renumber.
+Require Import Memory.
 
 Section PRESERVATION.
 
@@ -137,20 +138,20 @@ Inductive match_frames: RTL.stackframe -> RTL.stackframe -> Prop :=
       match_frames (Stackframe res f sp pc rs)
                    (Stackframe res (transf_function f) sp (renum_pc (pnum f) pc) rs).
 
-Inductive match_states: RTL.state -> RTL.state -> Prop :=
+Inductive match_states: RTL.state * mem -> RTL.state * mem -> Prop :=
   | match_regular_states: forall stk f sp pc rs m stk'
         (STACKS: list_forall2 match_frames stk stk')
         (REACH: reach f pc),
-      match_states (State stk f sp pc rs m)
-                   (State stk' (transf_function f) sp (renum_pc (pnum f) pc) rs m)
+      match_states (State stk f sp pc rs, m)
+                   (State stk' (transf_function f) sp (renum_pc (pnum f) pc) rs, m)
   | match_callstates: forall stk f args m stk'
         (STACKS: list_forall2 match_frames stk stk'),
-      match_states (Callstate stk f args m)
-                   (Callstate stk' (transf_fundef f) args m)
+      match_states (Callstate stk f args, m)
+                   (Callstate stk' (transf_fundef f) args, m)
   | match_returnstates: forall stk v m stk'
         (STACKS: list_forall2 match_frames stk stk'),
-      match_states (Returnstate stk v m)
-                   (Returnstate stk' v m).
+      match_states (Returnstate stk v, m)
+                   (Returnstate stk' v, m).
 
 Lemma step_simulation:
   forall S1 t S2, RTL.step ge S1 t S2 ->

@@ -696,7 +696,7 @@ Lemma make_memcpy_correct:
   eval_expr ge e le m src v ->
   assign_loc ty m b ofs v m' ->
   access_mode ty = By_copy ->
-  step ge (State f (make_memcpy dst src ty) k e le m) E0 (State f Sskip k e le m').
+  step ge (State f (make_memcpy dst src ty) k e le, m) E0 (State f Sskip k e le, m').
 Proof.
   intros. inv H1; try congruence. 
   unfold make_memcpy. change le with (set_optvar None Vundef le) at 2. 
@@ -714,7 +714,7 @@ Lemma make_store_correct:
   eval_expr ge e le m addr (Vptr b ofs) ->
   eval_expr ge e le m rhs v ->
   assign_loc ty m b ofs v m' ->
-  step ge (State f code k e le m) E0 (State f Sskip k e le m').
+  step ge (State f code k e le, m) E0 (State f Sskip k e le, m').
 Proof.
   unfold make_store. intros until k; intros MKSTORE EV1 EV2 ASSIGN.
   inversion ASSIGN; subst.
@@ -1040,7 +1040,7 @@ Inductive match_transl: stmt -> cont -> stmt -> cont -> Prop :=
 Lemma match_transl_step:
   forall ts tk ts' tk' f te le m,
   match_transl (Sblock ts) tk ts' tk' ->
-  star (step tge) (State f ts' tk' te le m) E0 (State f ts (Kblock tk) te le m).
+  star (step tge) (State f ts' tk' te le, m) E0 (State f ts (Kblock tk) te le, m).
 Proof.
   intros. inv H. 
   apply star_one. constructor. 
@@ -1083,7 +1083,7 @@ Inductive match_cont: type -> nat -> nat -> Clight.cont -> Csharpminor.cont -> P
                  (Clight.Kcall id f e le k)
                  (Kcall id tf te le tk).
 
-Inductive match_states: Clight.state -> Csharpminor.state -> Prop :=
+Inductive match_states: Clight.state * mem -> Csharpminor.state * mem -> Prop :=
   | match_state:
       forall f nbrk ncnt s k e le m tf ts tk te ts' tk'
           (TRF: transl_function f = OK tf)
@@ -1091,28 +1091,28 @@ Inductive match_states: Clight.state -> Csharpminor.state -> Prop :=
           (MTR: match_transl ts tk ts' tk')
           (MENV: match_env e te)
           (MK: match_cont (Clight.fn_return f) nbrk ncnt k tk),
-      match_states (Clight.State f s k e le m)
-                   (State tf ts' tk' te le m)
+      match_states (Clight.State f s k e le, m)
+                   (State tf ts' tk' te le, m)
   | match_callstate:
       forall fd args k m tfd tk targs tres cconv
           (TR: transl_fundef fd = OK tfd)
           (MK: match_cont Tvoid 0%nat 0%nat k tk)
           (ISCC: Clight.is_call_cont k)
           (TY: type_of_fundef fd = Tfunction targs tres cconv),
-      match_states (Clight.Callstate fd args k m)
-                   (Callstate tfd args tk m)
+      match_states (Clight.Callstate fd args k, m)
+                   (Callstate tfd args tk, m)
   | match_returnstate:
       forall res k m tk 
           (MK: match_cont Tvoid 0%nat 0%nat k tk),
-      match_states (Clight.Returnstate res k m)
-                   (Returnstate res tk m).
+      match_states (Clight.Returnstate res k, m)
+                   (Returnstate res tk, m).
 
 Remark match_states_skip:
   forall f e le te nbrk ncnt k tf tk m,
   transl_function f = OK tf ->
   match_env e te ->
   match_cont (Clight.fn_return f) nbrk ncnt k tk ->
-  match_states (Clight.State f Clight.Sskip k e le m) (State tf Sskip tk te le m).
+  match_states (Clight.State f Clight.Sskip k e le, m) (State tf Sskip tk te le, m).
 Proof.
   intros. econstructor; eauto. simpl; reflexivity. constructor. 
 Qed.

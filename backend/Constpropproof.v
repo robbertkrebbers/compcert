@@ -315,7 +315,7 @@ Inductive match_stackframes: stackframe -> stackframe -> Prop :=
         (Stackframe res f sp pc rs)
         (Stackframe res (transf_function rm f) sp pc rs').
 
-Inductive match_states: nat -> state -> state -> Prop :=
+Inductive match_states: nat -> state * mem -> state * mem -> Prop :=
   | match_states_intro:
       forall s sp pc rs m f s' pc' rs' m' bc ae n
            (MATCH: ematch bc rs ae)
@@ -323,32 +323,32 @@ Inductive match_states: nat -> state -> state -> Prop :=
            (PC: match_pc f ae n pc pc')
            (REGS: regs_lessdef rs rs')
            (MEM: Mem.extends m m'),
-      match_states n (State s f sp pc rs m)
-                    (State s' (transf_function rm f) sp pc' rs' m')
+      match_states n (State s f sp pc rs, m)
+                    (State s' (transf_function rm f) sp pc' rs', m')
   | match_states_call:
       forall s f args m s' args' m'
            (STACKS: list_forall2 match_stackframes s s')
            (ARGS: Val.lessdef_list args args')
            (MEM: Mem.extends m m'),
-      match_states O (Callstate s f args m)
-                     (Callstate s' (transf_fundef rm f) args' m')
+      match_states O (Callstate s f args, m)
+                     (Callstate s' (transf_fundef rm f) args', m')
   | match_states_return:
       forall s v m s' v' m'
            (STACKS: list_forall2 match_stackframes s s')
            (RES: Val.lessdef v v')
            (MEM: Mem.extends m m'),
       list_forall2 match_stackframes s s' ->
-      match_states O (Returnstate s v m)
-                     (Returnstate s' v' m').
+      match_states O (Returnstate s v, m)
+                     (Returnstate s' v', m').
 
 Lemma match_states_succ:
   forall s f sp pc rs m s' rs' m',
-  sound_state prog (State s f sp pc rs m) ->
+  sound_state prog (State s f sp pc rs, m) ->
   list_forall2 match_stackframes s s' ->
   regs_lessdef rs rs' ->
   Mem.extends m m' ->
-  match_states O (State s f sp pc rs m)
-                 (State s' (transf_function rm f) sp pc rs' m').
+  match_states O (State s f sp pc rs, m)
+                 (State s' (transf_function rm f) sp pc rs', m').
 Proof.
   intros. inv H. 
   apply match_states_intro with (bc := bc) (ae := ae); auto. 
@@ -523,7 +523,7 @@ Opaque builtin_strength_reduction.
   generalize (cond_strength_reduction_correct bc ae rs m EM cond args (aregs ae args) (refl_equal _)). 
   destruct (cond_strength_reduction cond args (aregs ae args)) as [cond' args'].
   intros EV1 TCODE.
-  left; exists O; exists (State s' (transf_function rm f) (Vptr sp0 Int.zero) (if b then ifso else ifnot) rs' m'); split. 
+  left; exists O; exists (State s' (transf_function rm f) (Vptr sp0 Int.zero) (if b then ifso else ifnot) rs', m'); split. 
   destruct (resolve_branch ac) eqn: RB. 
   assert (b0 = b) by (eapply resolve_branch_sound; eauto). subst b0. 
   destruct b; eapply exec_Inop; eauto. 
@@ -552,13 +552,13 @@ Opaque builtin_strength_reduction.
     rewrite H1. auto. }
   assert (rs'#arg = Vint n). 
   { generalize (REGS arg). rewrite H0. intros LD; inv LD; auto. }
-  left; exists O; exists (State s' (transf_function rm f) (Vptr sp0 Int.zero) pc' rs' m'); split.
+  left; exists O; exists (State s' (transf_function rm f) (Vptr sp0 Int.zero) pc' rs', m'); split.
   destruct A. eapply exec_Ijumptable; eauto. eapply exec_Inop; eauto.
   eapply match_states_succ; eauto.
 
   (* Ireturn *)
   exploit Mem.free_parallel_extends; eauto. intros [m2' [A B]].
-  left; exists O; exists (Returnstate s' (regmap_optget or Vundef rs') m2'); split.
+  left; exists O; exists (Returnstate s' (regmap_optget or Vundef rs'), m2'); split.
   eapply exec_Ireturn; eauto. TransfInstr; auto.
   constructor; auto.
   destruct or; simpl; auto. 
@@ -601,7 +601,7 @@ Lemma transf_initial_states:
 Proof.
   intros. inversion H.
   exploit function_ptr_translated; eauto. intro FIND.
-  exists O; exists (Callstate nil (transf_fundef rm f) nil m0); split.
+  exists O; exists (Callstate nil (transf_fundef rm f) nil, m0); split.
   econstructor; eauto.
   apply Genv.init_mem_transf; auto.
   replace (prog_main tprog) with (prog_main prog).

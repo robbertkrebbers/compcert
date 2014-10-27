@@ -1220,4 +1220,3 @@ Local Transparent destroyed_by_store.
 Qed.
 
 End CONSTRUCTORS.
-

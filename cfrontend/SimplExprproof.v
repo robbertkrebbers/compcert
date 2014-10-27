@@ -747,8 +747,8 @@ Lemma step_makeif:
   forall f a s1 s2 k e le m v1 b,
   eval_expr tge e le m a v1 ->
   bool_val v1 (typeof a) = Some b ->
-  star (step1 tge) (State f (makeif a s1 s2) k e le m)
-                E0 (State f (if b then s1 else s2) k e le m).
+  star (step1 tge) (State f (makeif a s1 s2) k e le, m)
+                E0 (State f (if b then s1 else s2) k e le, m).
 Proof.
   intros. functional induction (makeif a s1 s2).
   exploit eval_simpl_expr_sound; eauto. rewrite e0. intro EQ; subst v. 
@@ -764,8 +764,8 @@ Lemma step_make_set:
   Csem.deref_loc ge ty m b ofs t v ->
   eval_lvalue tge e le m a b ofs ->
   typeof a = ty ->
-  step1 tge (State f (make_set id a) k e le m)
-          t (State f Sskip k e (PTree.set id v le) m).
+  step1 tge (State f (make_set id a) k e le, m)
+          t (State f Sskip k e (PTree.set id v le), m).
 Proof.
   intros. exploit deref_loc_translated; eauto. rewrite <- H1.
   unfold make_set. destruct (chunk_for_volatile_type (typeof a)) as [chunk|].
@@ -785,8 +785,8 @@ Lemma step_make_assign:
   eval_expr tge e le m a2 v2 ->
   sem_cast v2 (typeof a2) ty = Some v ->
   typeof a1 = ty ->
-  step1 tge (State f (make_assign a1 a2) k e le m)
-          t (State f Sskip k e le m').
+  step1 tge (State f (make_assign a1 a2) k e le, m)
+          t (State f Sskip k e le, m').
 Proof.
   intros. exploit assign_loc_translated; eauto. rewrite <- H3.
   unfold make_assign. destruct (chunk_for_volatile_type (typeof a1)) as [chunk|].
@@ -815,8 +815,8 @@ Qed.
 
 Lemma push_seq:
   forall f sl k e le m,
-  star (step1 tge) (State f (makeseq sl) k e le m)
-                E0 (State f Sskip (Kseqlist sl k) e le m).
+  star (step1 tge) (State f (makeseq sl) k e le, m)
+                E0 (State f Sskip (Kseqlist sl k) e le, m).
 Proof.
   intros. unfold makeseq. generalize Sskip. revert sl k. 
   induction sl; simpl; intros.
@@ -831,8 +831,8 @@ Lemma step_tr_rvalof:
   tr_rvalof ty a sl a' tmp ->
   typeof a = ty ->
   exists le',
-    star (step1 tge) (State f Sskip (Kseqlist sl k) e le m)
-                   t (State f Sskip k e le' m)
+    star (step1 tge) (State f Sskip (Kseqlist sl k) e le, m)
+                   t (State f Sskip k e le', m)
   /\ eval_expr tge e le' m a' v
   /\ typeof a' = typeof a
   /\ forall x, ~In x tmp -> le'!x = le!x.
@@ -957,30 +957,30 @@ Qed.
 
 (** Matching between states *)
 
-Inductive match_states: Csem.state -> state -> Prop :=
+Inductive match_states: Csem.state * mem -> state * mem -> Prop :=
   | match_exprstates: forall f r k e m tf sl tk le dest a tmps,
       tr_function f tf ->
       tr_top tge e le m dest r sl a tmps ->
       match_cont_exp dest a k tk ->
-      match_states (Csem.ExprState f r k e m)
-                   (State tf Sskip (Kseqlist sl tk) e le m)
+      match_states (Csem.ExprState f r k e, m)
+                   (State tf Sskip (Kseqlist sl tk) e le, m)
   | match_regularstates: forall f s k e m tf ts tk le,
       tr_function f tf ->
       tr_stmt s ts ->
       match_cont k tk ->
-      match_states (Csem.State f s k e m)
-                   (State tf ts tk e le m)
+      match_states (Csem.State f s k e, m)
+                   (State tf ts tk e le, m)
   | match_callstates: forall fd args k m tfd tk,
       tr_fundef fd tfd ->
       match_cont k tk ->
-      match_states (Csem.Callstate fd args k m)
-                   (Callstate tfd args tk m)
+      match_states (Csem.Callstate fd args k, m)
+                   (Callstate tfd args tk, m)
   | match_returnstates: forall res k m tk,
       match_cont k tk ->
-      match_states (Csem.Returnstate res k m)
-                   (Returnstate res tk m)
-  | match_stuckstate: forall S,
-      match_states Csem.Stuckstate S.
+      match_states (Csem.Returnstate res k, m)
+                   (Returnstate res tk, m)
+  | match_stuckstate: forall m S,
+      match_states (Csem.Stuckstate, m) S.
 
 (** Additional results on translation of statements *)
 
@@ -1310,12 +1310,12 @@ with esizelist (el: Csyntax.exprlist) : nat :=
   | Csyntax.Econs r1 rl2 => (esize r1 + esizelist rl2)%nat
   end.
 
-Definition measure (st: Csem.state) : nat :=
+Definition measure (st: Csem.state * mem) : nat :=
   match st with
-  | Csem.ExprState _ r _ _ _ => (esize r + 1)%nat
-  | Csem.State _ Csyntax.Sskip _ _ _ => 0%nat
-  | Csem.State _ (Csyntax.Sdo r) _ _ _ => (esize r + 2)%nat
-  | Csem.State _ (Csyntax.Sifthenelse r _ _) _ _ _ => (esize r + 2)%nat
+  | (Csem.ExprState _ r _ _, _) => (esize r + 1)%nat
+  | (Csem.State _ Csyntax.Sskip _ _, _) => 0%nat
+  | (Csem.State _ (Csyntax.Sdo r) _ _, _) => (esize r + 2)%nat
+  | (Csem.State _ (Csyntax.Sifthenelse r _ _) _ _, _) => (esize r + 2)%nat
   | _ => 0%nat
   end.
 

@@ -226,55 +226,55 @@ Hint Resolve leftcontext_context.
   If there are none, the whole expression is simple and is evaluated in
   one big step. *)
 
-Inductive estep: state -> trace -> state -> Prop :=
+Inductive estep: state * mem -> trace -> state * mem -> Prop :=
 
   | step_expr: forall f r k e m v ty,
       eval_simple_rvalue e m r v ->
       match r with Eval _ _ => False | _ => True end ->
       ty = typeof r ->
-      estep (ExprState f r k e m)
-         E0 (ExprState f (Eval v ty) k e m)
+      estep (ExprState f r k e, m)
+         E0 (ExprState f (Eval v ty) k e, m)
 
   | step_rvalof_volatile: forall f C l ty k e m b ofs t v,
       leftcontext RV RV C ->
       eval_simple_lvalue e m l b ofs ->
       deref_loc ge ty m b ofs t v ->
       ty = typeof l -> type_is_volatile ty = true ->
-      estep (ExprState f (C (Evalof l ty)) k e m)
-          t (ExprState f (C (Eval v ty)) k e m)
+      estep (ExprState f (C (Evalof l ty)) k e, m)
+          t (ExprState f (C (Eval v ty)) k e, m)
 
   | step_seqand_true: forall f C r1 r2 ty k e m v,
       leftcontext RV RV C ->
       eval_simple_rvalue e m r1 v ->
       bool_val v (typeof r1) = Some true ->
-      estep (ExprState f (C (Eseqand r1 r2 ty)) k e m)
-         E0 (ExprState f (C (Eparen r2 type_bool ty)) k e m)
+      estep (ExprState f (C (Eseqand r1 r2 ty)) k e, m)
+         E0 (ExprState f (C (Eparen r2 type_bool ty)) k e, m)
   | step_seqand_false: forall f C r1 r2 ty k e m v,
       leftcontext RV RV C ->
       eval_simple_rvalue e m r1 v ->
       bool_val v (typeof r1) = Some false ->
-      estep (ExprState f (C (Eseqand r1 r2 ty)) k e m)
-         E0 (ExprState f (C (Eval (Vint Int.zero) ty)) k e m)
+      estep (ExprState f (C (Eseqand r1 r2 ty)) k e, m)
+         E0 (ExprState f (C (Eval (Vint Int.zero) ty)) k e, m)
 
   | step_seqor_true: forall f C r1 r2 ty k e m v,
       leftcontext RV RV C ->
       eval_simple_rvalue e m r1 v ->
       bool_val v (typeof r1) = Some true ->
-      estep (ExprState f (C (Eseqor r1 r2 ty)) k e m)
-         E0 (ExprState f (C (Eval (Vint Int.one) ty)) k e m)
+      estep (ExprState f (C (Eseqor r1 r2 ty)) k e, m)
+         E0 (ExprState f (C (Eval (Vint Int.one) ty)) k e, m)
   | step_seqor_false: forall f C r1 r2 ty k e m v,
       leftcontext RV RV C ->
       eval_simple_rvalue e m r1 v ->
       bool_val v (typeof r1) = Some false ->
-      estep (ExprState f (C (Eseqor r1 r2 ty)) k e m)
-         E0 (ExprState f (C (Eparen r2 type_bool ty)) k e m)
+      estep (ExprState f (C (Eseqor r1 r2 ty)) k e, m)
+         E0 (ExprState f (C (Eparen r2 type_bool ty)) k e, m)
 
   | step_condition: forall f C r1 r2 r3 ty k e m v b,
       leftcontext RV RV C ->
       eval_simple_rvalue e m r1 v ->
       bool_val v (typeof r1) = Some b ->
-      estep (ExprState f (C (Econdition r1 r2 r3 ty)) k e m)
-         E0 (ExprState f (C (Eparen (if b then r2 else r3) ty ty)) k e m)
+      estep (ExprState f (C (Econdition r1 r2 r3 ty)) k e, m)
+         E0 (ExprState f (C (Eparen (if b then r2 else r3) ty ty)) k e, m)
 
   | step_assign: forall f C l r ty k e m b ofs v v' t m',
       leftcontext RV RV C ->
@@ -283,8 +283,8 @@ Inductive estep: state -> trace -> state -> Prop :=
       sem_cast v (typeof r) (typeof l) = Some v' ->
       assign_loc ge (typeof l) m b ofs v' t m' ->
       ty = typeof l ->
-      estep (ExprState f (C (Eassign l r ty)) k e m)
-          t (ExprState f (C (Eval v' ty)) k e m')
+      estep (ExprState f (C (Eassign l r ty)) k e, m)
+          t (ExprState f (C (Eval v' ty)) k e, m')
 
   | step_assignop: forall f C op l r tyres ty k e m b ofs v1 v2 v3 v4 t1 t2 m' t,
       leftcontext RV RV C ->
@@ -296,8 +296,8 @@ Inductive estep: state -> trace -> state -> Prop :=
       assign_loc ge (typeof l) m b ofs v4 t2 m' ->
       ty = typeof l ->
       t = t1 ** t2 ->
-      estep (ExprState f (C (Eassignop op l r tyres ty)) k e m)
-          t (ExprState f (C (Eval v4 ty)) k e m')
+      estep (ExprState f (C (Eassignop op l r tyres ty)) k e, m)
+          t (ExprState f (C (Eval v4 ty)) k e, m')
 
   | step_assignop_stuck: forall f C op l r tyres ty k e m b ofs v1 v2 t,
       leftcontext RV RV C ->
@@ -313,8 +313,8 @@ Inductive estep: state -> trace -> state -> Prop :=
           end
       end ->
       ty = typeof l ->
-      estep (ExprState f (C (Eassignop op l r tyres ty)) k e m)
-          t Stuckstate
+      estep (ExprState f (C (Eassignop op l r tyres ty)) k e, m)
+          t (Stuckstate, m)
 
   | step_postincr: forall f C id l ty k e m b ofs v1 v2 v3 t1 t2 m' t,
       leftcontext RV RV C ->
@@ -325,8 +325,8 @@ Inductive estep: state -> trace -> state -> Prop :=
       assign_loc ge ty m b ofs v3 t2 m' ->
       ty = typeof l ->
       t = t1 ** t2 ->
-      estep (ExprState f (C (Epostincr id l ty)) k e m)
-          t (ExprState f (C (Eval v1 ty)) k e m')
+      estep (ExprState f (C (Epostincr id l ty)) k e, m)
+          t (ExprState f (C (Eval v1 ty)) k e, m')
 
   | step_postincr_stuck: forall f C id l ty k e m b ofs v1 t,
       leftcontext RV RV C ->
@@ -341,22 +341,22 @@ Inductive estep: state -> trace -> state -> Prop :=
           end
       end ->
       ty = typeof l ->
-      estep (ExprState f (C (Epostincr id l ty)) k e m)
-          t Stuckstate
+      estep (ExprState f (C (Epostincr id l ty)) k e, m)
+          t (Stuckstate, m)
 
   | step_comma: forall f C r1 r2 ty k e m v,
       leftcontext RV RV C ->
       eval_simple_rvalue e m r1 v ->
       ty = typeof r2 ->
-      estep (ExprState f (C (Ecomma r1 r2 ty)) k e m)
-         E0 (ExprState f (C r2) k e m)
+      estep (ExprState f (C (Ecomma r1 r2 ty)) k e, m)
+         E0 (ExprState f (C r2) k e, m)
 
   | step_paren: forall f C r tycast ty k e m v1 v,
       leftcontext RV RV C ->
       eval_simple_rvalue e m r v1 ->
       sem_cast v1 (typeof r) tycast = Some v ->
-      estep (ExprState f (C (Eparen r tycast ty)) k e m)
-         E0 (ExprState f (C (Eval v ty)) k e m)
+      estep (ExprState f (C (Eparen r tycast ty)) k e, m)
+         E0 (ExprState f (C (Eval v ty)) k e, m)
 
   | step_call: forall f C rf rargs ty k e m targs tres cconv vf vargs fd,
       leftcontext RV RV C ->
@@ -365,17 +365,17 @@ Inductive estep: state -> trace -> state -> Prop :=
       eval_simple_list e m rargs targs vargs ->
       Genv.find_funct ge vf = Some fd ->
       type_of_fundef fd = Tfunction targs tres cconv ->
-      estep (ExprState f (C (Ecall rf rargs ty)) k e m)
-         E0 (Callstate fd vargs (Kcall f e C ty k) m)
+      estep (ExprState f (C (Ecall rf rargs ty)) k e, m)
+         E0 (Callstate fd vargs (Kcall f e C ty k), m)
 
   | step_builtin: forall f C ef tyargs rargs ty k e m vargs t vres m',
       leftcontext RV RV C ->
       eval_simple_list e m rargs tyargs vargs ->
       builtin_call ef ge vargs m t vres m' ->
-      estep (ExprState f (C (Ebuiltin ef tyargs rargs ty)) k e m)
-          t (ExprState f (C (Eval vres ty)) k e m').
+      estep (ExprState f (C (Ebuiltin ef tyargs rargs ty)) k e, m)
+          t (ExprState f (C (Eval vres ty)) k e, m').
 
-Definition step (S: state) (t: trace) (S': state) : Prop :=
+Definition step (S: state * mem) (t: trace) (S': state * mem) : Prop :=
   estep S t S' \/ sstep ge S t S'.
 
 (** Properties of contexts *)
@@ -402,7 +402,7 @@ Hint Resolve context_compose contextlist_compose.
 (** A state is safe according to the nondeterministic semantics 
   if it cannot get stuck by doing silent transitions only. *)
 
-Definition safe (s: Csem.state) : Prop :=
+Definition safe (s: Csem.state * mem) : Prop :=
   forall s', star (Csem.step ge) s E0 s' ->
   (exists r, final_state s' r) \/ (exists t, exists s'', Csem.step ge s' t s'').
 
@@ -434,12 +434,12 @@ Require Import Classical.
 
 Lemma safe_imm_safe:
   forall f C a k e m K,
-  safe (ExprState f (C a) k e m) ->
+  safe (ExprState f (C a) k e, m) ->
   context K RV C ->
   imm_safe ge e K a m.
 Proof.
   intros. destruct (classic (imm_safe ge e K a m)); auto.
-  destruct (H Stuckstate). 
+  destruct (H (Stuckstate,m)). 
   apply star_one. left. econstructor; eauto.
   destruct H2 as [r F]. inv F. 
   destruct H2 as [t [s' S]]. inv S. inv H2. inv H2. 
@@ -494,7 +494,7 @@ Qed.
 Lemma safe_expr_kind:
   forall from C f a k e m,
   context from RV C ->
-  safe (ExprState f (C a) k e m) ->
+  safe (ExprState f (C a) k e, m) ->
   expr_kind a = from.
 Proof.
   intros. eapply imm_safe_kind. eapply safe_imm_safe; eauto.
@@ -679,7 +679,7 @@ Qed.
 
 Lemma safe_inv:
   forall k C f a K m,
-  safe (ExprState f (C a) K e m) ->
+  safe (ExprState f (C a) K e, m) ->
   context k RV C ->
   match a with
   | Eloc _ _ _ => True
@@ -704,12 +704,12 @@ Variable m: mem.
 Lemma eval_simple_steps:
    (forall a v, eval_simple_rvalue e m a v ->
     forall C, context RV RV C ->
-    star (Csem.step ge) (ExprState f (C a) k e m)
-                     E0 (ExprState f (C (Eval v (typeof a))) k e m))
+    star (Csem.step ge) (ExprState f (C a) k e, m)
+                     E0 (ExprState f (C (Eval v (typeof a))) k e, m))
 /\ (forall a b ofs, eval_simple_lvalue e m a b ofs ->
     forall C, context LV RV C ->
-    star (Csem.step ge) (ExprState f (C a) k e m)
-                     E0 (ExprState f (C (Eloc b ofs (typeof a))) k e m)).
+    star (Csem.step ge) (ExprState f (C a) k e, m)
+                     E0 (ExprState f (C (Eloc b ofs (typeof a))) k e, m)).
 Proof.
 
 Ltac Steps REC C' := eapply star_trans; [apply (REC C'); eauto | idtac | simpl; reflexivity].
@@ -752,22 +752,22 @@ Qed.
 Lemma eval_simple_rvalue_steps:
   forall a v, eval_simple_rvalue e m a v ->
   forall C, context RV RV C ->
-  star (Csem.step ge) (ExprState f (C a) k e m)
-                   E0 (ExprState f (C (Eval v (typeof a))) k e m).
+  star (Csem.step ge) (ExprState f (C a) k e, m)
+                   E0 (ExprState f (C (Eval v (typeof a))) k e, m).
 Proof (proj1 eval_simple_steps).
 
 Lemma eval_simple_lvalue_steps:
   forall a b ofs, eval_simple_lvalue e m a b ofs ->
   forall C, context LV RV C ->
-  star (Csem.step ge) (ExprState f (C a) k e m)
-                   E0 (ExprState f (C (Eloc b ofs (typeof a))) k e m).
+  star (Csem.step ge) (ExprState f (C a) k e, m)
+                   E0 (ExprState f (C (Eloc b ofs (typeof a))) k e, m).
 Proof (proj2 eval_simple_steps).
 
 Corollary eval_simple_rvalue_safe:
   forall C a v,
   eval_simple_rvalue e m a v ->
-  context RV RV C -> safe (ExprState f (C a) k e m) ->
-  safe (ExprState f (C (Eval v (typeof a))) k e m).
+  context RV RV C -> safe (ExprState f (C a) k e, m) ->
+  safe (ExprState f (C (Eval v (typeof a))) k e, m).
 Proof.
   intros. eapply safe_steps; eauto. eapply eval_simple_rvalue_steps; eauto.
 Qed.
@@ -775,15 +775,15 @@ Qed.
 Corollary eval_simple_lvalue_safe:
   forall C a b ofs,
   eval_simple_lvalue e m a b ofs ->
-  context LV RV C -> safe (ExprState f (C a) k e m) ->
-  safe (ExprState f (C (Eloc b ofs (typeof a))) k e m).
+  context LV RV C -> safe (ExprState f (C a) k e, m) ->
+  safe (ExprState f (C (Eloc b ofs (typeof a))) k e, m).
 Proof.
   intros. eapply safe_steps; eauto. eapply eval_simple_lvalue_steps; eauto.
 Qed.
 
 Lemma simple_can_eval:
   forall a from C,
-  simple a = true -> context from RV C -> safe (ExprState f (C a) k e m) ->
+  simple a = true -> context from RV C -> safe (ExprState f (C a) k e, m) ->
   match from with
   | LV => exists b, exists ofs, eval_simple_lvalue e m a b ofs
   | RV => exists v, eval_simple_rvalue e m a v
@@ -793,13 +793,13 @@ Ltac StepL REC C' a :=
   let b := fresh "b" in let ofs := fresh "ofs" in
   let E := fresh "E" in let S := fresh "SAFE" in
   exploit (REC LV C'); eauto; intros [b [ofs E]];
-  assert (S: safe (ExprState f (C' (Eloc b ofs (typeof a))) k e m)) by 
+  assert (S: safe (ExprState f (C' (Eloc b ofs (typeof a))) k e, m)) by 
     (eapply (eval_simple_lvalue_safe C'); eauto);
   simpl in S.
 Ltac StepR REC C' a :=
   let v := fresh "v" in let E := fresh "E" in let S := fresh "SAFE" in
   exploit (REC RV C'); eauto; intros [v E];
-  assert (S: safe (ExprState f (C' (Eval v (typeof a))) k e m)) by 
+  assert (S: safe (ExprState f (C' (Eval v (typeof a))) k e, m)) by 
     (eapply (eval_simple_rvalue_safe C'); eauto);
   simpl in S.
 
@@ -855,9 +855,9 @@ Qed.
 
 Lemma simple_can_eval_rval:
   forall r C, 
-  simple r = true -> context RV RV C -> safe (ExprState f (C r) k e m) ->
+  simple r = true -> context RV RV C -> safe (ExprState f (C r) k e, m) ->
   exists v, eval_simple_rvalue e m r v
-        /\ safe (ExprState f (C (Eval v (typeof r))) k e m).
+        /\ safe (ExprState f (C (Eval v (typeof r))) k e, m).
 Proof.
   intros. exploit (simple_can_eval r RV); eauto. intros [v A]. 
   exists v; split; auto. eapply eval_simple_rvalue_safe; eauto.
@@ -865,9 +865,9 @@ Qed.
 
 Lemma simple_can_eval_lval:
   forall l C, 
-  simple l = true -> context LV RV C -> safe (ExprState f (C l) k e m) ->
+  simple l = true -> context LV RV C -> safe (ExprState f (C l) k e, m) ->
   exists b, exists ofs, eval_simple_lvalue e m l b ofs
-         /\ safe (ExprState f (C (Eloc b ofs (typeof l))) k e m).
+         /\ safe (ExprState f (C (Eloc b ofs (typeof l))) k e, m).
 Proof.
   intros. exploit (simple_can_eval l LV); eauto. intros [b [ofs A]]. 
   exists b; exists ofs; split; auto. eapply eval_simple_lvalue_safe; eauto.
@@ -978,8 +978,8 @@ Hint Resolve contextlist'_head contextlist'_tail.
 Lemma eval_simple_list_steps:
   forall rl vl, eval_simple_list' rl vl ->
   forall C, contextlist' C ->
-  star (Csem.step ge) (ExprState f (C rl) k e m)
-                   E0 (ExprState f (C (rval_list vl rl)) k e m).
+  star (Csem.step ge) (ExprState f (C rl) k e, m)
+                   E0 (ExprState f (C (rval_list vl rl)) k e, m).
 Proof.
   induction 1; intros. 
 (* nil *)
@@ -995,7 +995,7 @@ Lemma simple_list_can_eval:
   forall rl C,
   simplelist rl = true ->
   contextlist' C ->
-  safe (ExprState f (C rl) k e m) ->
+  safe (ExprState f (C rl) k e, m) ->
   exists vl, eval_simple_list' rl vl.
 Proof.
   induction rl; intros.
@@ -1051,11 +1051,11 @@ Hint Constructors leftcontext leftcontextlist.
 
 Lemma decompose_expr:
   (forall a from C,
-   context from RV C -> safe (ExprState f (C a) k e m) ->
+   context from RV C -> safe (ExprState f (C a) k e, m) ->
        simple a = true
     \/ exists C', exists a', a = C' a' /\ simple_side_effect a' /\ leftcontext RV from C')
 /\(forall rl C,
-   contextlist' C -> safe (ExprState f (C rl) k e m) ->
+   contextlist' C -> safe (ExprState f (C rl) k e, m) ->
        simplelist rl = true
     \/ exists C', exists a', rl = C' a' /\ simple_side_effect a' /\ leftcontextlist RV C').
 Proof.
@@ -1127,7 +1127,7 @@ Qed.
 
 Lemma decompose_topexpr:
   forall a,
-  safe (ExprState f a k e m) ->
+  safe (ExprState f a k e, m) ->
        simple a = true
     \/ exists C, exists a', a = C a' /\ simple_side_effect a' /\ leftcontext RV RV C.
 Proof.
@@ -1275,9 +1275,9 @@ Qed.
 
 Lemma can_estep:
   forall f a k e m,
-  safe (ExprState f a k e m) ->
+  safe (ExprState f a k e, m) ->
   match a with Eval _ _ => False | _ => True end ->
-  exists t, exists S, estep (ExprState f a k e m) t S.
+  exists t, exists S, estep (ExprState f a k e, m) t S.
 Proof.
   intros. destruct (decompose_topexpr f k e m a H) as [A | [C [b [P [Q R]]]]].
 (* simple expr *)
@@ -1418,7 +1418,7 @@ Proof.
     (* callred *)
     eapply can_estep; eauto. inv H2; auto. inv H1; auto.
     (* stuck *)
-    exploit (H Stuckstate). apply star_one. left. econstructor; eauto.
+    exploit (H (Stuckstate,m)). apply star_one. left. econstructor; eauto.
     intros [[r F] | [t [S' R]]]. inv F. inv R. inv H0. inv H0.
   destruct H1 as [t' [S'' ESTEP]].
   exists t'; exists S''; left; auto.

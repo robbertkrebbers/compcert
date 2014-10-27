@@ -1251,8 +1251,8 @@ Lemma save_callee_save_regs_correct:
   exists rs', exists m',
     star (step tge )
        (State cs fb (Vptr sp Int.zero)
-         (save_callee_save_regs bound number mkindex ty fe l k) rs m)
-    E0 (State cs fb (Vptr sp Int.zero) k rs' m')
+         (save_callee_save_regs bound number mkindex ty fe l k) rs, m)
+    E0 (State cs fb (Vptr sp Int.zero) k rs', m')
   /\ (forall r,
        In r l -> number r < bound fe ->
        index_contains_inj j m' sp (mkindex (number r)) (ls (R r)))
@@ -1353,8 +1353,8 @@ Lemma save_callee_save_correct:
   frame_perm_freeable m sp ->
   exists rs', exists m',
     star (step tge)
-       (State cs fb (Vptr sp Int.zero) (save_callee_save fe k) rs m)
-    E0 (State cs fb (Vptr sp Int.zero) k rs' m')
+       (State cs fb (Vptr sp Int.zero) (save_callee_save fe k) rs, m)
+    E0 (State cs fb (Vptr sp Int.zero) k rs', m')
   /\ (forall r,
        In r int_callee_save_regs -> index_int_callee_save r < b.(bound_int_callee_save) ->
        index_contains_inj j m' sp (FI_saved_int (index_int_callee_save r)) (ls (R r)))
@@ -1495,8 +1495,8 @@ Lemma function_prologue_correct:
   /\ store_stack m2' (Vptr sp' Int.zero) Tint tf.(fn_link_ofs) parent = Some m3'
   /\ store_stack m3' (Vptr sp' Int.zero) Tint tf.(fn_retaddr_ofs) ra = Some m4'
   /\ star (step tge) 
-         (State cs fb (Vptr sp' Int.zero) (save_callee_save fe k) rs1 m4')
-      E0 (State cs fb (Vptr sp' Int.zero) k rs' m5')
+         (State cs fb (Vptr sp' Int.zero) (save_callee_save fe k) rs1, m4')
+      E0 (State cs fb (Vptr sp' Int.zero) k rs', m5')
   /\ agree_regs j' ls1 rs'
   /\ agree_frame j' ls1 ls0 m2 sp m5' sp' parent ra
   /\ inject_incr j j'
@@ -1679,8 +1679,8 @@ Lemma restore_callee_save_regs_correct:
   exists rs',
     star (step tge)
       (State cs fb (Vptr sp Int.zero)
-        (restore_callee_save_regs bound number mkindex ty fe l k) rs m)
-   E0 (State cs fb (Vptr sp Int.zero) k rs' m)
+        (restore_callee_save_regs bound number mkindex ty fe l k) rs, m)
+   E0 (State cs fb (Vptr sp Int.zero) k rs', m)
   /\ (forall r, In r l -> val_inject j (ls0 (R r)) (rs' r))
   /\ (forall r, ~(In r l) -> rs' r = rs r)
   /\ agree_unused ls0 rs'.
@@ -1730,8 +1730,8 @@ Lemma restore_callee_save_correct:
   agree_unused j ls0 rs ->
   exists rs',
     star (step tge)
-       (State cs fb (Vptr sp' Int.zero) (restore_callee_save fe k) rs m')
-    E0 (State cs fb (Vptr sp' Int.zero) k rs' m')
+       (State cs fb (Vptr sp' Int.zero) (restore_callee_save fe k) rs, m')
+    E0 (State cs fb (Vptr sp' Int.zero) k rs', m')
   /\ (forall r, 
         In r int_callee_save_regs \/ In r float_callee_save_regs -> 
         val_inject j (ls0 (R r)) (rs' r))
@@ -1801,8 +1801,8 @@ Lemma function_epilogue_correct:
   /\ load_stack m' (Vptr sp' Int.zero) Tint tf.(fn_retaddr_ofs) = Some ra
   /\ Mem.free m' sp' 0 tf.(fn_stacksize) = Some m1'
   /\ star (step tge)
-       (State cs fb (Vptr sp' Int.zero) (restore_callee_save fe k) rs m')
-    E0 (State cs fb (Vptr sp' Int.zero) k rs1 m')
+       (State cs fb (Vptr sp' Int.zero) (restore_callee_save fe k) rs, m')
+    E0 (State cs fb (Vptr sp' Int.zero) k rs1, m')
   /\ agree_regs j (return_regs ls0 ls) rs1
   /\ agree_callee_save (return_regs ls0 ls) ls0
   /\ Mem.inject j m1 m1'.
@@ -2442,7 +2442,7 @@ End ANNOT_ARGUMENTS.
 - Well-typedness of [f].
 *)
 
-Inductive match_states: Linear.state -> Mach.state -> Prop :=
+Inductive match_states: Linear.state * mem -> Mach.state * mem -> Prop :=
   | match_states_intro:
       forall cs f sp c ls m cs' fb sp' rs m' j tf
         (MINJ: Mem.inject j m m')
@@ -2452,8 +2452,8 @@ Inductive match_states: Linear.state -> Mach.state -> Prop :=
         (AGREGS: agree_regs j ls rs)
         (AGFRAME: agree_frame f j ls (parent_locset cs) m sp m' sp' (parent_sp cs') (parent_ra cs'))
         (TAIL: is_tail c (Linear.fn_code f)),
-      match_states (Linear.State cs f (Vptr sp Int.zero) c ls m)
-                  (Mach.State cs' fb (Vptr sp' Int.zero) (transl_code (make_env (function_bounds f)) c) rs m')
+      match_states (Linear.State cs f (Vptr sp Int.zero) c ls, m)
+                  (Mach.State cs' fb (Vptr sp' Int.zero) (transl_code (make_env (function_bounds f)) c) rs, m')
   | match_states_call:
       forall cs f ls m cs' fb rs m' j tf
         (MINJ: Mem.inject j m m')
@@ -2462,16 +2462,16 @@ Inductive match_states: Linear.state -> Mach.state -> Prop :=
         (FIND: Genv.find_funct_ptr tge fb = Some tf)
         (AGREGS: agree_regs j ls rs)
         (AGLOCS: agree_callee_save ls (parent_locset cs)),
-      match_states (Linear.Callstate cs f ls m)
-                  (Mach.Callstate cs' fb rs m')
+      match_states (Linear.Callstate cs f ls, m)
+                  (Mach.Callstate cs' fb rs, m')
   | match_states_return:
       forall cs ls m cs' rs m' j sg 
         (MINJ: Mem.inject j m m')
         (STACKS: match_stacks j m m' cs cs' sg (Mem.nextblock m) (Mem.nextblock m'))
         (AGREGS: agree_regs j ls rs)
         (AGLOCS: agree_callee_save ls (parent_locset cs)),
-      match_states (Linear.Returnstate cs ls m)
-                  (Mach.Returnstate cs' rs m').
+      match_states (Linear.Returnstate cs ls, m)
+                  (Mach.Returnstate cs' rs, m').
 
 Theorem transf_step_correct:
   forall s1 t s2, Linear.step ge s1 t s2 ->

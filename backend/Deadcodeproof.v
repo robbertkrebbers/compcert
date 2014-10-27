@@ -481,7 +481,7 @@ Inductive match_stackframes: stackframe -> stackframe -> Prop :=
       match_stackframes (Stackframe res f (Vptr sp Int.zero) pc e)
                         (Stackframe res tf (Vptr sp Int.zero) pc te).
 
-Inductive match_states: state -> state -> Prop :=
+Inductive match_states: state * mem -> state * mem -> Prop :=
   | match_regular_states:
       forall s f sp pc e m ts tf te tm an
         (STACKS: list_forall2 match_stackframes s ts)
@@ -489,23 +489,23 @@ Inductive match_states: state -> state -> Prop :=
         (ANL: analyze (vanalyze rm f) f = Some an)
         (ENV: eagree e te (fst (transfer f (vanalyze rm f) pc an!!pc)))
         (MEM: magree m tm (nlive ge sp (snd (transfer f (vanalyze rm f) pc an!!pc)))),
-      match_states (State s f (Vptr sp Int.zero) pc e m)
-                   (State ts tf (Vptr sp Int.zero) pc te tm)
+      match_states (State s f (Vptr sp Int.zero) pc e, m)
+                   (State ts tf (Vptr sp Int.zero) pc te, tm)
   | match_call_states:
       forall s f args m ts tf targs tm
         (STACKS: list_forall2 match_stackframes s ts)
         (FUN: transf_fundef rm f = OK tf)
         (ARGS: Val.lessdef_list args targs)
         (MEM: Mem.extends m tm),
-      match_states (Callstate s f args m)
-                   (Callstate ts tf targs tm)
+      match_states (Callstate s f args, m)
+                   (Callstate ts tf targs, tm)
   | match_return_states:
       forall s v m ts tv tm
         (STACKS: list_forall2 match_stackframes s ts)
         (RES: Val.lessdef v tv)
         (MEM: Mem.extends m tm),
-      match_states (Returnstate s v m)
-                   (Returnstate ts tv tm).
+      match_states (Returnstate s v, m)
+                   (Returnstate ts tv, tm).
 
 (** [match_states] and CFG successors *)
 
@@ -530,8 +530,8 @@ Lemma match_succ_states:
     (ANPC: an!!pc = (ne, nm))
     (ENV: eagree e te ne)
     (MEM: magree m tm (nlive ge sp nm)),
-  match_states (State s f (Vptr sp Int.zero) pc' e m)
-               (State ts tf (Vptr sp Int.zero) pc' te tm).
+  match_states (State s f (Vptr sp Int.zero) pc' e, m)
+               (State ts tf (Vptr sp Int.zero) pc' te, tm).
 Proof.
   intros. exploit analyze_successors; eauto. rewrite ANPC; simpl. intros [A B]. 
   econstructor; eauto. 
@@ -985,7 +985,7 @@ Lemma transf_initial_states:
 Proof.
   intros. inversion H.
   exploit function_ptr_translated; eauto. intros (tf & A & B).
-  exists (Callstate nil tf nil m0); split.
+  exists (Callstate nil tf nil, m0); split.
   econstructor; eauto.
   eapply Genv.init_mem_transf_partial; eauto.
   rewrite (transform_partial_program_main _ _ TRANSF).

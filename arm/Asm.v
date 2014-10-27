@@ -782,17 +782,14 @@ Definition annot_arguments
 
 (** Execution of the instruction at [rs#PC]. *)
 
-Inductive state: Type :=
-  | State: regset -> mem -> state.
-
-Inductive step: state -> trace -> state -> Prop :=
+Inductive step: regset * mem -> trace -> regset * mem -> Prop :=
   | exec_step_internal:
       forall b ofs f i rs m rs' m',
       rs PC = Vptr b ofs ->
       Genv.find_funct_ptr ge b = Some (Internal f) ->
       find_instr (Int.unsigned ofs) (fn_code f) = Some i ->
       exec_instr f i rs m = Next rs' m' ->
-      step (State rs m) E0 (State rs' m')
+      step (rs, m) E0 (rs', m')
   | exec_step_builtin:
       forall b ofs f ef args res rs m t vl rs' m',
       rs PC = Vptr b ofs ->
@@ -802,7 +799,7 @@ Inductive step: state -> trace -> state -> Prop :=
       rs' = nextinstr 
               (set_regs res vl
                 (undef_regs (map preg_of (destroyed_by_builtin ef)) rs)) ->
-      step (State rs m) t (State rs' m')
+      step (rs, m) t (rs', m')
   | exec_step_annot:
       forall b ofs f ef args rs m vargs t v m',
       rs PC = Vptr b ofs ->
@@ -810,7 +807,7 @@ Inductive step: state -> trace -> state -> Prop :=
       find_instr (Int.unsigned ofs) (fn_code f) = Some (Pannot ef args) ->
       annot_arguments rs m args vargs ->
       builtin_call' ef ge vargs m t v m' ->
-      step (State rs m) t (State (nextinstr rs) m')
+      step (rs, m) t (nextinstr rs, m')
   | exec_step_external:
       forall b ef args res rs m t rs' m',
       rs PC = Vptr b Int.zero ->
@@ -818,13 +815,13 @@ Inductive step: state -> trace -> state -> Prop :=
       external_call' ef ge args m t res m' ->
       extcall_arguments rs m (ef_sig ef) args ->
       rs' = (set_regs (loc_external_result (ef_sig ef) ) res rs)#PC <- (rs IR14) ->
-      step (State rs m) t (State rs' m').
+      step (rs, m) t (rs', m').
 
 End RELSEM.
 
 (** Execution of whole programs. *)
 
-Inductive initial_state (p: program): state -> Prop :=
+Inductive initial_state (p: program): regset * mem -> Prop :=
   | initial_state_intro: forall m0,
       let ge := Genv.globalenv p in
       let rs0 :=
@@ -833,13 +830,13 @@ Inductive initial_state (p: program): state -> Prop :=
         # IR14 <- Vzero
         # IR13 <- Vzero in
       Genv.init_mem p = Some m0 ->
-      initial_state p (State rs0 m0).
+      initial_state p (rs0, m0).
 
-Inductive final_state: state -> int -> Prop :=
+Inductive final_state: regset * mem -> int -> Prop :=
   | final_state_intro: forall rs m r,
       rs#PC = Vzero ->
       rs#IR0 = Vint r ->
-      final_state (State rs m) r.
+      final_state (rs, m) r.
       
 Definition semantics (p: program) :=
   Semantics step (initial_state p) final_state (Genv.globalenv p).

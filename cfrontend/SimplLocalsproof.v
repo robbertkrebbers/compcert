@@ -1098,8 +1098,8 @@ Theorem store_params_correct:
   (forall id, ~In id (var_names params) -> tle2!id = tle1!id) ->
   (forall id, In id (var_names params) -> le!id = None) ->
   exists tle, exists tm',
-  star (step2 tge) (State f (store_params cenv params s) k te tle tm)
-                E0 (State f s k te tle tm')
+  star (step2 tge) (State f (store_params cenv params s) k te tle, tm)
+                E0 (State f s k te tle, tm')
   /\ bind_parameter_temps params targs tle2 = Some tle
   /\ Mem.inject j m' tm'
   /\ match_envs j cenv e le m' lo hi te tle tlo thi
@@ -1725,7 +1725,7 @@ Qed.
 
 (** Relating execution states *)
 
-Inductive match_states: state -> state -> Prop :=
+Inductive match_states: state * mem -> state * mem -> Prop :=
   | match_regular_states:
       forall f s k e le m tf ts tk te tle tm j lo hi tlo thi
         (TRF: transf_function f = OK tf)
@@ -1736,8 +1736,8 @@ Inductive match_states: state -> state -> Prop :=
         (COMPAT: compat_cenv (addr_taken_stmt s) (cenv_for f))
         (BOUND: Ple hi (Mem.nextblock m))
         (TBOUND: Ple thi (Mem.nextblock tm)),
-      match_states (State f s k e le m)
-                   (State tf ts tk te tle tm)
+      match_states (State f s k e le, m)
+                   (State tf ts tk te tle, tm)
   | match_call_state:
       forall fd vargs k m tfd tvargs tk tm j targs tres cconv
         (TRFD: transf_fundef fd = OK tfd)
@@ -1746,15 +1746,15 @@ Inductive match_states: state -> state -> Prop :=
         (AINJ: val_list_inject j vargs tvargs)
         (FUNTY: type_of_fundef fd = Tfunction targs tres cconv)
         (ANORM: val_casted_list vargs targs),
-      match_states (Callstate fd vargs k m)
-                   (Callstate tfd tvargs tk tm)
+      match_states (Callstate fd vargs k, m)
+                   (Callstate tfd tvargs tk, tm)
   | match_return_state:
       forall v k m tv tk tm j
         (MCONT: forall cenv, match_cont j cenv k tk m (Mem.nextblock m) (Mem.nextblock tm))
         (MINJ: Mem.inject j m tm)
         (RINJ: val_inject j v tv),
-      match_states (Returnstate v k m)
-                   (Returnstate tv tk tm).
+      match_states (Returnstate v k, m)
+                   (Returnstate tv tk, tm).
 
 (** The simulation diagrams *)
 

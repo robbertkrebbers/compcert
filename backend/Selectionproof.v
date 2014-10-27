@@ -133,8 +133,8 @@ Lemma eval_store:
   eval_expr tge sp e m nil a1 v1 ->
   eval_expr tge sp e m nil a2 v2 ->
   Mem.storev chunk m v1 v2 = Some m' ->
-  step tge (State f (store chunk a1 a2) k sp e m)
-        E0 (State f Sskip k sp e m').
+  step tge (State f (store chunk a1 a2) k sp e, m)
+        E0 (State f Sskip k sp e, m').
 Proof.
   intros. generalize H1; destruct v1; simpl; intro; try discriminate.
   unfold store.
@@ -579,7 +579,7 @@ Inductive match_cont: Cminor.cont -> CminorSel.cont -> Prop :=
       match_cont k k' -> env_lessdef e e' ->
       match_cont (Cminor.Kcall id f sp e k) (Kcall id f' sp e' k').
 
-Inductive match_states: Cminor.state -> CminorSel.state -> Prop :=
+Inductive match_states: Cminor.state * mem -> CminorSel.state * mem -> Prop :=
   | match_state: forall f f' s k s' k' sp e m e' m'
         (TF: sel_function f = OK f')
         (TS: sel_stmt s = OK s')
@@ -587,43 +587,24 @@ Inductive match_states: Cminor.state -> CminorSel.state -> Prop :=
         (LD: env_lessdef e e')
         (ME: Mem.extends m m'),
       match_states
-        (Cminor.State f s k sp e m)
-        (State f' s' k' sp e' m')
+        (Cminor.State f s k sp e, m)
+        (State f' s' k' sp e', m')
   | match_callstate: forall f f' args args' k k' m m'
         (TF: sel_fundef f = OK f')
         (MC: match_cont k k')
         (LD: Val.lessdef_list args args')
         (ME: Mem.extends m m'),
       match_states
-        (Cminor.Callstate f args k m)
-        (Callstate f' args' k' m')
+        (Cminor.Callstate f args k, m)
+        (Callstate f' args' k', m')
   | match_returnstate: forall v v' k k' m m'
         (MC: match_cont k k')
         (LD: Val.lessdef v v')
         (ME: Mem.extends m m'),
       match_states
-        (Cminor.Returnstate v k m)
-        (Returnstate v' k' m'). (*
-  | match_builtin_1: forall ef args args' optid f sp e k m al f' e' k' m'
-        (TF: sel_function ge f = OK f')
-        (MC: match_cont k k')
-        (LDA: Val.lessdef_list args args')
-        (LDE: env_lessdef e e')
-        (ME: Mem.extends m m')
-        (EA: eval_exprlist tge sp e' m' nil al args'),
-      match_states
-        (Cminor.Callstate (External ef) args (Cminor.Kcall optid f sp e k) m)
-        (State f' (Sbuiltin optid ef al) k' sp e' m')
-  | match_builtin_2: forall v v' optid f sp e k m f' e' m' k'
-        (TF: sel_function hf ge f = OK f')
-        (MC: match_cont k k')
-        (LDV: Val.lessdef v v')
-        (LDE: env_lessdef e e')
-        (ME: Mem.extends m m'),
-      match_states
-        (Cminor.Returnstate v (Cminor.Kcall optid f sp e k) m)
-        (State f' Sskip k' sp (set_optvar optid v' e') m').
-*)
+        (Cminor.Returnstate v k, m)
+        (Returnstate v' k', m').
+
 Remark call_cont_commut:
   forall k k', match_cont k k' -> match_cont (Cminor.call_cont k) (call_cont k').
 Proof.
@@ -673,11 +654,11 @@ Proof.
   destruct (ident_eq lbl l). auto. apply IHs; auto.
 Qed.
 
-Definition measure (s: Cminor.state) : nat :=
+Definition measure (s: Cminor.state * mem) : nat :=
   match s with
-  | Cminor.Callstate _ _ _ _ => 0%nat
-  | Cminor.State _ _ _ _ _ _ => 1%nat
-  | Cminor.Returnstate _ _ _ => 2%nat
+  | (Cminor.Callstate _ _ _, _) => 0%nat
+  | (Cminor.State _ _ _ _ _, _) => 1%nat
+  | (Cminor.Returnstate _ _, _) => 2%nat
   end.
 
 Lemma sel_step_correct:
@@ -757,7 +738,7 @@ Proof.
 - (* Sifthenelse *)
   exploit sel_expr_correct; eauto. intros [v' [A B]].
   assert (Val.bool_of_val v' b). inv B. auto. inv H0.
-  left; exists (State f' (if b then x else x0) k' sp e' m'); split.
+  left; exists (State f' (if b then x else x0) k' sp e', m'); split.
   econstructor; eauto. eapply eval_condexpr_of_expr; eauto. 
   constructor; auto. destruct b; auto.
 - (* Sloop *)

@@ -207,27 +207,27 @@ Inductive match_stackframes: stackframe -> stackframe -> Prop :=
         (Stackframe (transf_function f) sp ls 
           (remove_unused_labels (labels_branched_to f.(fn_code)) c)).
 
-Inductive match_states: state -> state -> Prop :=
+Inductive match_states: state * mem -> state * mem -> Prop :=
   | match_states_intro:
       forall s f sp c ls m ts
         (STACKS: list_forall2 match_stackframes s ts)
         (INCL: incl c f.(fn_code)),
-      match_states (State s f sp c ls m)
-                   (State ts (transf_function f) sp (remove_unused_labels (labels_branched_to f.(fn_code)) c) ls m)
+      match_states (State s f sp c ls, m)
+                   (State ts (transf_function f) sp (remove_unused_labels (labels_branched_to f.(fn_code)) c) ls, m)
   | match_states_call:
       forall s f ls m ts,
       list_forall2 match_stackframes s ts ->
-      match_states (Callstate s f ls m)
-                   (Callstate ts (transf_fundef f) ls m)
+      match_states (Callstate s f ls, m)
+                   (Callstate ts (transf_fundef f) ls, m)
   | match_states_return:
       forall s ls m ts,
       list_forall2 match_stackframes s ts ->
-      match_states (Returnstate s ls m)
-                   (Returnstate ts ls m).
+      match_states (Returnstate s ls, m)
+                   (Returnstate ts ls, m).
 
-Definition measure (st: state) : nat :=
+Definition measure (st: state * mem) : nat :=
   match st with
-  | State s f sp c ls m => List.length c
+  | (State s f sp c ls, m) => List.length c
   | _ => O
   end.
 
