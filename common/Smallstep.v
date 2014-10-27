@@ -1748,27 +1748,3 @@ Proof.
 (* single-event *)
   red. intros. inv H0; simpl; omega.
 Qed.
-
-(** * Connections with big-step semantics *)
-
-(** The general form of a big-step semantics *)
-
-Record bigstep_semantics : Type :=
-  Bigstep_semantics {
-    bigstep_terminates: trace -> int -> Prop;
-    bigstep_diverges: traceinf -> Prop
-  }.
-
-(** Soundness with respect to a small-step semantics *)
-
-Record bigstep_sound (B: bigstep_semantics) (L: semantics) : Prop :=
-  Bigstep_sound {
-    bigstep_terminates_sound:
-      forall t r,
-      bigstep_terminates B t r ->
-      exists s1, exists s2, initial_state L s1 /\ Star L s1 t s2 /\ final_state L s2 r;
-    bigstep_diverges_sound:
-      forall T,
-      bigstep_diverges B T ->
-      exists s1, initial_state L s1 /\ forever (step L (globalenv L)) s1 T
-}.

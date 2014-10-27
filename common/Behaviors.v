@@ -813,34 +813,3 @@ Qed.
 End INF_SEQ_DECOMP.
 
 Set Implicit Arguments.
-
-(** * Big-step semantics and program behaviors *)
-
-Section BIGSTEP_BEHAVIORS.
-
-Variable B: bigstep_semantics.
-Variable L: semantics.
-Hypothesis sound: bigstep_sound B L.
-
-Lemma behavior_bigstep_terminates:
-  forall t r,
-  bigstep_terminates B t r -> program_behaves L (Terminates t r).
-Proof.
-  intros. exploit (bigstep_terminates_sound sound); eauto. 
-  intros [s1 [s2 [P [Q R]]]].
-  econstructor; eauto. econstructor; eauto.
-Qed.
-
-Lemma behavior_bigstep_diverges:
-  forall T,
-  bigstep_diverges B T ->
-  program_behaves L (Reacts T)
-  \/ exists t, program_behaves L (Diverges t) /\ traceinf_prefix t T.
-Proof.
-  intros. exploit (bigstep_diverges_sound sound); eauto. intros [s1 [P Q]].
-  exploit forever_silent_or_reactive; eauto. intros [X | [t [s' [T' [X [Y Z]]]]]].
-  left. econstructor; eauto. constructor; auto.
-  right. exists t; split. econstructor; eauto. econstructor; eauto. exists T'; auto.
-Qed.
-
-End BIGSTEP_BEHAVIORS.

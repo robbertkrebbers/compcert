@@ -95,30 +95,6 @@ Proof.
     intros. rewrite atomic_behaviors; auto. 
 Qed.
 
-(** We can also use the alternate big-step semantics for [Cstrategy]
-  to establish behaviors of the generated assembly code. *)
-
-Theorem bigstep_cstrategy_preservation:
-  forall p tp,
-  transf_c_program p = OK tp ->
-  (forall t r,
-     Cstrategy.bigstep_program_terminates p t r ->
-     program_behaves (Asm.semantics tp) (Terminates t r))
-/\(forall T,
-     Cstrategy.bigstep_program_diverges p T ->
-       program_behaves (Asm.semantics tp) (Reacts T)
-    \/ exists t, program_behaves (Asm.semantics tp) (Diverges t) /\ traceinf_prefix t T).
-Proof.
-  intuition.
-  apply transf_cstrategy_program_preservation with p; auto. red; auto.
-  apply behavior_bigstep_terminates with (Cstrategy.bigstep_semantics p); auto.
-  apply Cstrategy.bigstep_semantics_sound.
-  exploit (behavior_bigstep_diverges (Cstrategy.bigstep_semantics_sound p)). eassumption.
-  intros [A | [t [A B]]]. 
-  left. apply transf_cstrategy_program_preservation with p; auto. red; auto.
-  right; exists t; split; auto. apply transf_cstrategy_program_preservation with p; auto. red; auto.
-Qed.
-
 (** * Satisfaction of specifications *)
 
 (** The second additional results shows that if all executions
@@ -201,4 +177,3 @@ Proof.
 Qed.
 
 End LIVENESS_PRESERVED.
-
