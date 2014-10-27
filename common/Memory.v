@@ -4299,6 +4299,96 @@ Qed.
 
 End UNCHANGED_ON.
 
+(** During the execution of the semantics, the memories should only grow, i.e.
+new objects may be allocated and permissions may be dropped. *)
+
+Definition forward (m1 m2:mem) :=
+  (forall b, Mem.valid_block m1 b ->
+    valid_block m2 b /\ 
+    forall ofs p, perm m2 b ofs Max p -> perm m1 b ofs Max p).
+
+Lemma forward_refl:
+  forall m, forward m m.
+Proof. red; eauto. Qed. 
+
+Lemma forward_trans:
+  forall m1 m2 m3, 
+  forward m1 m2 -> forward m2 m3 -> forward m1 m3.
+Proof.
+  intros m1 m2 m3 Hm12 Hm23 b Hb1.
+  destruct (Hm12 _ Hb1) as [Hb2 ?]; destruct (Hm23 _ Hb2); eauto.
+Qed.
+
+Lemma unchanged_trans:
+  forall P m1 m2 m3,
+  unchanged_on P m1 m2 -> unchanged_on P m2 m3 ->
+  forward m1 m2 -> unchanged_on P m1 m3.
+Proof.
+  intros; split.
+  { intros b ofs k p ??. assert (valid_block m2 b) by (now apply H1).
+    now rewrite (unchanged_on_perm _ _ _ H),
+      (unchanged_on_perm _ _ _ H0) by auto. }
+  intros b ofs ??. assert (perm m2 b ofs Cur Readable).
+  { eapply H; eauto using Mem.perm_valid_block. }
+  now rewrite <-(unchanged_on_contents _ _ _ H),
+    <-(unchanged_on_contents _ _ _ H0) by auto.
+Qed.
+
+Lemma store_forward:
+  forall m b ofs v ch m',
+  store ch m b ofs v = Some m' -> forward m m'.
+Proof.
+  split; eauto using Mem.store_valid_block_1, Mem.perm_store_2.
+Qed.
+
+Lemma storev_forward:
+  forall m vaddr v ch m',
+  storev ch m vaddr v = Some m' -> forward m m'.
+Proof.
+  now destruct vaddr; eauto using store_forward.
+Qed.
+
+Lemma storebytes_forward:
+  forall m b ofs bytes m',
+  storebytes m b ofs bytes = Some m' -> forward m m'.
+Proof.
+  split; eauto using Mem.storebytes_valid_block_1, Mem.perm_storebytes_2.
+Qed.
+
+Lemma alloc_forward:
+  forall m lo hi m' b,
+  alloc m lo hi = (m',b) -> forward m m'.
+Proof.
+  split; intros.
+  { eauto using Mem.valid_block_alloc. }
+  eapply Mem.perm_alloc_4; eauto.
+  intros ->; eapply Mem.fresh_block_alloc; eauto.
+Qed.
+
+Lemma free_forward:
+  forall b z0 z m m',
+  free m b z0 z = Some m' -> forward m m'.
+Proof.
+  split; eauto using Mem.valid_block_free_1, Mem.perm_free_3. 
+Qed.
+
+Lemma free_list_forward:
+  forall l m m',
+  free_list m l = Some m' -> forward m m'.
+Proof.
+  induction l as [|[[??]?]]; simpl; intros.
+  { inv H. apply forward_refl. }
+  destruct (free m b z z0) eqn:?; inv H.
+  eauto using forward_trans, free_forward.
+Qed.
+
+Lemma forward_nextblock:
+  forall m m',
+  forward m m' -> (Mem.nextblock m <= Mem.nextblock m')%positive.
+Proof.
+  intros. apply Pos.le_nlt; intros ?.
+  now apply (Pos.lt_irrefl (nextblock m')), H.
+Qed.
 End Mem.
 
 Notation mem := Mem.mem.

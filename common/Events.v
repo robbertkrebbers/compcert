@@ -1791,6 +1791,22 @@ Proof.
   intros. exploit builtin_call_determ. eexact H. eexact H0. intuition.
 Qed.
 
+(** Corollaries of [external_call_valid_block] and [external_call_max_perm]. *)
+
+Lemma external_call_forward:
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
+  external_call ef ge vargs m1 t vres m2 -> Mem.forward m1 m2.
+Proof.
+  split; eauto using external_call_valid_block, external_call_max_perm.
+Qed.
+
+Lemma builtin_call_forward:
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
+  builtin_call ef ge vargs m1 t vres m2 -> Mem.forward m1 m2.
+Proof.
+  split; eauto using builtin_call_valid_block, builtin_call_max_perm.
+Qed.
+
 (** Late in the back-end, calling conventions for external calls change:
   arguments and results of type [Tlong] are passed as two integers.
   We now wrap [external_call] to adapt to this convention. *)
@@ -1980,6 +1996,22 @@ Proof.
   split; congruence.
 Qed.
 
+Lemma external_call_max_perm':
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2 b ofs p,
+  external_call' ef ge vargs m1 t vres m2 ->
+  Mem.valid_block m1 b ->
+  Mem.perm m2 b ofs Max p -> Mem.perm m1 b ofs Max p.
+Proof.
+  destruct 1; eauto using external_call_max_perm.
+Qed.
+
+Lemma external_call_forward':
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
+  external_call' ef ge vargs m1 t vres m2 -> Mem.forward m1 m2.
+Proof.
+  split; eauto using external_call_valid_block', external_call_max_perm'.
+Qed.
+
 Inductive builtin_call'
       (ef: builtin) (F V: Type) (ge: Genv.t F V)
       (vargs: list val) (m1: mem) (t: trace) (vres: list val) (m2: mem) : Prop :=
@@ -2095,4 +2127,20 @@ Proof.
   intros. inv H; inv H0. 
   exploit builtin_call_deterministic. eexact H1. eexact H. intros [A B].
   split; congruence.
+Qed.
+
+Lemma builtin_call_max_perm':
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2 b ofs p,
+  builtin_call' ef ge vargs m1 t vres m2 ->
+  Mem.valid_block m1 b ->
+  Mem.perm m2 b ofs Max p -> Mem.perm m1 b ofs Max p.
+Proof.
+  destruct 1; eauto using builtin_call_max_perm.
+Qed.
+
+Lemma builtin_call_forward':
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
+  builtin_call' ef ge vargs m1 t vres m2 -> Mem.forward m1 m2.
+Proof.
+  split; eauto using builtin_call_valid_block', builtin_call_max_perm'.
 Qed.

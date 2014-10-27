@@ -284,7 +284,10 @@ Record semantics : Type := Semantics {
   step : Genv.t funtype vartype -> (state * mem) -> trace -> (state * mem) -> Prop;
   initial_state: (state * mem) -> Prop;
   final_state: (state * mem) -> int -> Prop;
-  globalenv: Genv.t funtype vartype
+  globalenv: Genv.t funtype vartype;
+  step_forward :
+    forall ge s1 m1 t s2 m2,
+    step ge (s1,m1) t (s2,m2) -> Mem.forward m1 m2
 }.
 
 (** Handy notations. *)

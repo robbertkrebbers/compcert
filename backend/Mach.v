@@ -428,5 +428,20 @@ Inductive final_state: state * mem -> int -> Prop :=
       rs r = Vint retcode ->
       final_state (Returnstate nil rs, m) retcode.
 
+Lemma store_stack_forward:
+  forall m1 sp ty x v m2,
+  store_stack m1 sp ty x v = Some m2 -> Mem.forward m1 m2.
+Proof.
+  unfold store_stack. eauto using Mem.storev_forward.
+Qed.
+Lemma semantics_forward:
+  forall rao ge s1 m1 t s2 m2,
+  step rao ge (s1,m1) t (s2,m2) -> Mem.forward m1 m2.
+Proof.
+  intros; inv H; eauto 10 using Mem.forward_refl, Mem.storev_forward,
+    Mem.free_forward, Mem.alloc_forward, external_call_forward',
+    Mem.forward_trans, Mem.alloc_forward, builtin_call_forward'.
+Qed.
+
 Definition semantics (rao: function -> code -> int -> Prop) (p: program) :=
-  Semantics (step rao) (initial_state p) final_state (Genv.globalenv p).
+  Semantics (step rao) (initial_state p) final_state (Genv.globalenv p) (semantics_forward rao).

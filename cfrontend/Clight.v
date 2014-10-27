@@ -698,11 +698,46 @@ Definition step2 (ge: genv) := step ge function_entry2.
 
 (** Wrapping up these definitions in two small-step semantics. *)
 
+Lemma alloc_variables_forward:
+  forall vars m e e2 m',
+  alloc_variables e m vars e2 m' -> Mem.forward m m'.
+Proof.
+  induction 1; eauto using Mem.forward_refl, Mem.forward_trans, Mem.alloc_forward.
+Qed.
+
+Lemma bind_parameters_forward:
+  forall e m pars vargs m',
+  bind_parameters e m pars vargs m' -> Mem.forward m m'.
+Proof.
+  induction 1; eauto using Mem.forward_refl.
+  destruct H0; eauto using Mem.forward_trans, Mem.storev_forward, Mem.storebytes_forward.
+Qed.
+
+Lemma semantics1_forward:
+  forall ge s1 m1 t s2 m2,
+  step1 ge (s1,m1) t (s2,m2) -> Mem.forward m1 m2.
+Proof.
+  intros; inv H; eauto using Mem.forward_refl, Mem.free_list_forward,
+    Mem.alloc_forward, external_call_forward, builtin_call_forward.
+  destruct H8; eauto using Mem.storev_forward, Mem.storebytes_forward.
+  destruct H3; eauto using alloc_variables_forward, bind_parameters_forward, Mem.forward_trans.
+Qed.
+
+Lemma semantics2_forward:
+  forall ge s1 m1 t s2 m2,
+  step2 ge (s1,m1) t (s2,m2) -> Mem.forward m1 m2.
+Proof.
+  intros; inv H; eauto using Mem.forward_refl, Mem.free_list_forward,
+    Mem.alloc_forward, external_call_forward, builtin_call_forward.
+  destruct H8; eauto using Mem.storev_forward, Mem.storebytes_forward.
+  destruct H3; eauto using alloc_variables_forward, bind_parameters_forward, Mem.forward_trans.
+Qed.
+
 Definition semantics1 (p: program) :=
-  Semantics step1 (initial_state p) final_state (Genv.globalenv p).
+  Semantics step1 (initial_state p) final_state (Genv.globalenv p) semantics1_forward.
 
 Definition semantics2 (p: program) :=
-  Semantics step2 (initial_state p) final_state (Genv.globalenv p).
+  Semantics step2 (initial_state p) final_state (Genv.globalenv p) semantics2_forward.
 
 (** This semantics is receptive to changes in events. *)
 

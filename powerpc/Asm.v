@@ -1008,9 +1008,41 @@ Inductive final_state: regset * mem -> int -> Prop :=
       rs#PC = Vzero ->
       rs#GPR3 = Vint r ->
       final_state (rs, m) r.
-      
+
+Lemma semantics_forward:
+  forall ge s1 m1 t s2 m2,
+  step ge (s1,m1) t (s2,m2) -> Mem.forward m1 m2.
+Proof.
+  intros ge.
+  assert (LOAD1: forall ch i c j rs1 m1 rs2 m2,
+    load1 ge ch i c j rs1 m1 = Next rs2 m2 -> Mem.forward m1 m2).
+  { unfold load1; intros.
+    destruct (Mem.loadv ch m1 _) eqn:?; inv H; eauto using Mem.forward_refl. }
+  assert (LOAD2: forall ch i c j rs1 m1 rs2 m2,
+    load2 ch i c j rs1 m1 = Next rs2 m2 -> Mem.forward m1 m2).
+  { unfold load2; intros.
+    destruct (Mem.loadv ch m1 _) eqn:?; inv H; eauto using Mem.forward_refl. }
+  assert (GOTO: forall f l rs1 m1 rs2 m2,
+    goto_label f l rs1 m1 = Next rs2 m2 -> Mem.forward m1 m2).
+  { unfold goto_label; intros.
+    destruct (label_pos l 0 _), (rs1 PC); inv H; eauto using Mem.forward_refl. }
+  assert (STORE1: forall ch i c j rs1 m1 rs2 m2,
+    store1 ge ch i c j rs1 m1 = Next rs2 m2 -> Mem.forward m1 m2).
+  { unfold store1; intros.
+    destruct (Mem.storev ch m1 _ _) eqn:?; inv H; eauto using Mem.storev_forward. }
+  assert (STORE2: forall ch r r1 r2 rs1 m1 rs2 m2,
+    store2 ch r r1 r2 rs1 m1 = Next rs2 m2 -> Mem.forward m1 m2).
+  { unfold store2; intros.
+    destruct (Mem.storev ch m1 _ _) eqn:?; inv H; eauto using Mem.storev_forward. }
+  intros; inv H; eauto using builtin_call_forward', external_call_forward'.
+  clear H4 H6 H7. destruct i; inv H8;
+    repeat match goal with
+    | H : context [match ?e with _ => _ end] |- _ => destruct e eqn:?; inv H
+    end; eauto using Mem.forward_refl, Mem.free_forward.
+  eauto using Mem.forward_trans, Mem.store_forward, Mem.alloc_forward.
+Qed.
 Definition semantics (p: program) :=
-  Semantics step (initial_state p) final_state (Genv.globalenv p).
+  Semantics step (initial_state p) final_state (Genv.globalenv p) semantics_forward.
 
 (** Determinacy of the [Asm] semantics. *)
 

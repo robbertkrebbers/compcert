@@ -777,8 +777,39 @@ Inductive final_state: state * mem -> int -> Prop :=
 
 (** Wrapping up these definitions in a small-step semantics. *)
 
+Lemma alloc_variables_forward:
+  forall vars m e e2 m',
+  alloc_variables e m vars e2 m' -> Mem.forward m m'.
+Proof.
+  induction 1; eauto using Mem.forward_refl, Mem.forward_trans, Mem.alloc_forward.
+Qed.
+Lemma assign_loc_forward:
+  forall F V (ge : Genv.t F V) ty m1 b ofs v t m2,
+  assign_loc ge ty m1 b ofs v t m2 -> Mem.forward m1 m2.
+Proof.
+  destruct 1; eauto using Mem.storev_forward, Mem.storebytes_forward.
+  destruct H1; eauto using Mem.forward_refl, Mem.store_forward.
+Qed.
+Lemma bind_parameters_forward:
+  forall F V (ge : Genv.t F V) e m pars vargs m',
+  bind_parameters ge e m pars vargs m' -> Mem.forward m m'.
+Proof.
+  induction 1; eauto using Mem.forward_refl, Mem.forward_trans, assign_loc_forward.
+Qed.
+
+Lemma semantics_forward:
+  forall ge s1 m1 t s2 m2,
+  step ge (s1,m1) t (s2,m2) -> Mem.forward m1 m2.
+Proof.
+  destruct 1; inv H; eauto using Mem.forward_refl,
+    Mem.free_list_forward, external_call_forward,
+    Mem.forward_trans, alloc_variables_forward, bind_parameters_forward.
+  * destruct H4; eauto using Mem.forward_refl.
+  * destruct H4; eauto using Mem.forward_refl, builtin_call_forward, assign_loc_forward.
+Qed.
+
 Definition semantics (p: program) :=
-  Semantics step (initial_state p) final_state (Genv.globalenv p).
+  Semantics step (initial_state p) final_state (Genv.globalenv p) semantics_forward.
 
 (** This semantics has the single-event property. *)
 

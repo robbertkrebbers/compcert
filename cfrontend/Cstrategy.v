@@ -1430,8 +1430,17 @@ End STRATEGY.
 
 (** The semantics that follows the strategy. *)
 
+Lemma semantics_forward:
+  forall ge s1 m1 t s2 m2,
+  step ge (s1,m1) t (s2,m2) -> Mem.forward m1 m2.
+Proof.
+  destruct 1; inv H; eauto using Mem.forward_refl, assign_loc_forward,
+    Mem.free_list_forward, external_call_forward, builtin_call_forward,
+    Mem.forward_trans, alloc_variables_forward, bind_parameters_forward.
+Qed.
+
 Definition semantics (p: program) :=
-  Semantics step (initial_state p) final_state (Genv.globalenv p).
+  Semantics step (initial_state p) final_state (Genv.globalenv p) semantics_forward.
 
 (** This semantics is receptive to changes in events. *)
 

@@ -487,5 +487,21 @@ Inductive final_state: state * mem -> int -> Prop :=
 
 (** Wrapping up these definitions in a small-step semantics. *)
 
+Lemma alloc_variables_forward:
+  forall vars m e e2 m',
+  alloc_variables e m vars e2 m' -> Mem.forward m m'.
+Proof.
+  induction 1; eauto using Mem.forward_refl, Mem.forward_trans, Mem.alloc_forward.
+Qed.
+
+Lemma semantics_forward:
+  forall ge s1 m1 t s2 m2,
+  step ge (s1,m1) t (s2,m2) -> Mem.forward m1 m2.
+Proof.
+  intros; inv H; eauto using Mem.forward_refl, Mem.storev_forward,
+    Mem.free_list_forward, external_call_forward,
+    builtin_call_forward, alloc_variables_forward.
+Qed.
+
 Definition semantics (p: program) :=
-  Semantics step (initial_state p) final_state (Genv.globalenv p).
+  Semantics step (initial_state p) final_state (Genv.globalenv p) semantics_forward.
