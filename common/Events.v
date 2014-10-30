@@ -312,7 +312,7 @@ Qed.
 
 Lemma eventval_list_match_lessdef:
   forall evl tyl vl1, eventval_list_match evl tyl vl1 ->
-  forall vl2, Val.lessdef_list vl1 vl2 -> eventval_list_match evl tyl vl2.
+  forall vl2, Forall2 Val.lessdef vl1 vl2 -> eventval_list_match evl tyl vl2.
 Proof.
   induction 1; intros. inv H; constructor.
   inv H1. constructor. eapply eventval_match_lessdef; eauto. eauto.
@@ -351,7 +351,7 @@ Qed.
 
 Lemma eventval_list_match_inject:
   forall evl tyl vl1, eventval_list_match evl tyl vl1 ->
-  forall vl2, val_list_inject f vl1 vl2 -> eventval_list_match evl tyl vl2.
+  forall vl2, Forall2 (val_inject f) vl1 vl2 -> eventval_list_match evl tyl vl2.
 Proof.
   induction 1; intros. inv H; constructor.
   inv H1. constructor. eapply eventval_match_inject; eauto. eauto.
@@ -643,7 +643,7 @@ Record extcall_properties (sem: extcall_sem)
     forall F V (ge: Genv.t F V) vargs m1 t vres m2 m1' vargs',
     sem F V ge vargs m1 t vres m2 ->
     Mem.extends m1 m1' ->
-    Val.lessdef_list vargs vargs' ->
+    Forall2 Val.lessdef vargs vargs' ->
     exists vres', exists m2',
        sem F V ge vargs' m1' t vres' m2'
     /\ Val.lessdef vres vres'
@@ -657,7 +657,7 @@ Record extcall_properties (sem: extcall_sem)
     meminj_preserves_globals ge f ->
     sem F V ge vargs m1 t vres m2 ->
     Mem.inject f m1 m1' ->
-    val_list_inject f vargs vargs' ->
+    Forall2 (val_inject f) vargs vargs' ->
     exists f', exists vres', exists m2',
        sem F V ge vargs' m1' t vres' m2'
     /\ val_inject f' vres vres'
@@ -1250,7 +1250,7 @@ Proof.
   assert (Mem.perm m1 bdst i Max Nonempty).
   apply Mem.perm_cur_max. apply Mem.perm_implies with Writable; auto with mem.
   eapply Mem.storebytes_range_perm; eauto. 
-  erewrite list_forall2_length; eauto. 
+  erewrite Forall2_length; eauto. 
   tauto.
 - (* injections *)
   intros. inv H0. inv H2. inv H14. inv H15. inv H11. inv H12.
@@ -1307,7 +1307,7 @@ Proof.
   eelim H2; eauto. 
   apply Mem.perm_cur_max. apply Mem.perm_implies with Writable; auto with mem.
   eapply Mem.storebytes_range_perm; eauto. 
-  erewrite list_forall2_length; eauto. 
+  erewrite Forall2_length; eauto. 
   omega.
   split. apply inject_incr_refl.
   red; intros; congruence.
@@ -1400,12 +1400,12 @@ Proof.
   inv H. apply Mem.unchanged_on_refl.
 (* mem extends *)
   inv H. inv H1. inv H6. 
-  exists v2; exists m1'; intuition.
+  exists y; exists m1'; intuition.
   econstructor; eauto.
   eapply eventval_match_lessdef; eauto.
 (* mem inject *)
   inv H0. inv H2. inv H7.
-  exists f; exists v'; exists m1'; intuition.
+  exists f; exists y; exists m1'; intuition.
   econstructor; eauto.
   eapply eventval_match_inject; eauto.
   red; intros; congruence.
@@ -1473,7 +1473,7 @@ Proof.
   * destruct 2; auto using Mem.unchanged_on_refl.
   * destruct 2; intros;
       repeat match goal with
-      | H : Val.lessdef_list _ _ |- _ => inv H
+      | H : Forall2 Val.lessdef _ _ |- _ => inv H
       | H : Val.lessdef _ _ |- _ => inv H; try discriminate
       | H : _ ?v Vundef = _ |- _ => destruct v; discriminate
       end;
@@ -1486,7 +1486,7 @@ Proof.
   * destruct 2; intros;
       repeat match goal with
       | _ => progress simpl in *
-      | H : val_list_inject _ _ _ |- _ => inv H
+      | H : Forall2 (val_inject _) _ _ |- _ => inv H
       | H : val_inject _ _ _ |- _ => inv H; try discriminate; [idtac]
       | H : option_map _ ?x = _ |- _ => destruct x eqn:?; inv H
       | H : Some _ = Some _ |- _ => inv H
@@ -1536,7 +1536,7 @@ Proof.
   * destruct 2; auto using Mem.unchanged_on_refl.
   * destruct 2; intros;
       repeat match goal with
-      | H : Val.lessdef_list _ _ |- _ => inv H
+      | H : Forall2 Val.lessdef _ _ |- _ => inv H
       | H : Val.lessdef _ _ |- _ => inv H; try discriminate
       end;
       do 2 eexists;
@@ -1548,7 +1548,7 @@ Proof.
   * destruct 2; intros;
       repeat match goal with
       | _ => progress simpl in *
-      | H : val_list_inject _ _ _ |- _ => inv H
+      | H : Forall2 (val_inject _) _ _ |- _ => inv H
       | H : val_inject _ _ _ |- _ => inv H; try discriminate; [idtac]
       end;
       do 3 eexists;
@@ -1840,7 +1840,7 @@ Definition proj_sig_res' (s: signature) : list typ :=
   end.
 
 Lemma decode_longs_lessdef:
-  forall tyl vl1 vl2, Val.lessdef_list vl1 vl2 -> Val.lessdef_list (decode_longs tyl vl1) (decode_longs tyl vl2).
+  forall tyl vl1 vl2, Forall2 Val.lessdef vl1 vl2 -> Forall2 Val.lessdef (decode_longs tyl vl1) (decode_longs tyl vl2).
 Proof.
   induction tyl; simpl; intros. 
   auto.
@@ -1848,7 +1848,7 @@ Proof.
 Qed.
 
 Lemma decode_longs_inject:
-  forall f tyl vl1 vl2, val_list_inject f vl1 vl2 -> val_list_inject f (decode_longs tyl vl1) (decode_longs tyl vl2).
+  forall f tyl vl1 vl2, Forall2 (val_inject f) vl1 vl2 -> Forall2 (val_inject f) (decode_longs tyl vl1) (decode_longs tyl vl2).
 Proof.
   induction tyl; simpl; intros. 
   auto.
@@ -1856,14 +1856,14 @@ Proof.
 Qed.
 
 Lemma encode_long_lessdef:
-  forall oty v1 v2, Val.lessdef v1 v2 -> Val.lessdef_list (encode_long oty v1) (encode_long oty v2).
+  forall oty v1 v2, Val.lessdef v1 v2 -> Forall2 Val.lessdef (encode_long oty v1) (encode_long oty v2).
 Proof.
   intros. destruct oty as [[]|]; simpl; auto. 
   constructor. apply Val.hiword_lessdef; auto. constructor. apply Val.loword_lessdef; auto. auto.
 Qed.
 
 Lemma encode_long_inject:
-  forall f oty v1 v2, val_inject f v1 v2 -> val_list_inject f (encode_long oty v1) (encode_long oty v2).
+  forall f oty v1 v2, val_inject f v1 v2 -> Forall2 (val_inject f) (encode_long oty v1) (encode_long oty v2).
 Proof.
   intros. destruct oty as [[]|]; simpl; auto. 
   constructor. apply val_hiword_inject; auto. constructor. apply val_loword_inject; auto. auto.
@@ -1926,10 +1926,10 @@ Lemma external_call_mem_extends':
   forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2 m1' vargs',
   external_call' ef ge vargs m1 t vres m2 ->
   Mem.extends m1 m1' ->
-  Val.lessdef_list vargs vargs' ->
+  Forall2 Val.lessdef vargs vargs' ->
   exists vres' m2',
      external_call' ef ge vargs' m1' t vres' m2'
-  /\ Val.lessdef_list vres vres'
+  /\ Forall2 Val.lessdef vres vres'
   /\ Mem.extends m2 m2'
   /\ Mem.unchanged_on (loc_out_of_bounds m1) m1' m2'.
 Proof.
@@ -1947,10 +1947,10 @@ Lemma external_call_mem_inject':
   meminj_preserves_globals ge f ->
   external_call' ef ge vargs m1 t vres m2 ->
   Mem.inject f m1 m1' ->
-  val_list_inject f vargs vargs' ->
+  Forall2 (val_inject f) vargs vargs' ->
   exists f' vres' m2',
      external_call' ef ge vargs' m1' t vres' m2'
-  /\ val_list_inject f' vres vres'
+  /\ Forall2 (val_inject f') vres vres'
   /\ Mem.inject f' m2 m2'
   /\ Mem.unchanged_on (loc_unmapped f) m1 m2
   /\ Mem.unchanged_on (loc_out_of_reach f m1) m1' m2'
@@ -2059,10 +2059,10 @@ Lemma builtin_call_mem_extends':
   forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2 m1' vargs',
   builtin_call' ef ge vargs m1 t vres m2 ->
   Mem.extends m1 m1' ->
-  Val.lessdef_list vargs vargs' ->
+  Forall2 Val.lessdef vargs vargs' ->
   exists vres' m2',
      builtin_call' ef ge vargs' m1' t vres' m2'
-  /\ Val.lessdef_list vres vres'
+  /\ Forall2 Val.lessdef vres vres'
   /\ Mem.extends m2 m2'
   /\ Mem.unchanged_on (loc_out_of_bounds m1) m1' m2'.
 Proof.
@@ -2080,10 +2080,10 @@ Lemma builtin_call_mem_inject':
   meminj_preserves_globals ge f ->
   builtin_call' ef ge vargs m1 t vres m2 ->
   Mem.inject f m1 m1' ->
-  val_list_inject f vargs vargs' ->
+  Forall2 (val_inject f) vargs vargs' ->
   exists f' vres' m2',
      builtin_call' ef ge vargs' m1' t vres' m2'
-  /\ val_list_inject f' vres vres'
+  /\ Forall2 (val_inject f') vres vres'
   /\ Mem.inject f' m2 m2'
   /\ Mem.unchanged_on (loc_unmapped f) m1 m2
   /\ Mem.unchanged_on (loc_out_of_reach f m1) m1' m2'

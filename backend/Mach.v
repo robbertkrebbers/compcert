@@ -223,7 +223,7 @@ Inductive extcall_arg: regset -> mem -> val -> loc -> val -> Prop :=
 
 Definition extcall_arguments
     (rs: regset) (m: mem) (sp: val) (sg: signature) (args: list val) : Prop :=
-  list_forall2 (extcall_arg rs m sp) (loc_arguments sg) args.
+  Forall2 (extcall_arg rs m sp) (loc_arguments sg) args.
 
 (** Extract the values of the arguments to an annotation. *)
 
@@ -236,7 +236,7 @@ Inductive annot_arg: regset -> mem -> val -> annot_param -> val -> Prop :=
 
 Definition annot_arguments
    (rs: regset) (m: mem) (sp: val) (params: list annot_param) (args: list val) : Prop :=
-  list_forall2 (annot_arg rs m sp) params args.
+  Forall2 (annot_arg rs m sp) params args.
 
 (** Mach execution states. *)
 

@@ -1165,7 +1165,7 @@ Proof.
 Qed.
 
 Lemma aregs_sound:
-  forall bc e ae rl, ematch bc e ae -> list_forall2 (vmatch bc) (e##rl) (aregs ae rl).
+  forall bc e ae rl, ematch bc e ae -> Forall2 (vmatch bc) (e##rl) (aregs ae rl).
 Proof.
   induction rl; simpl; intros. constructor. constructor; auto. apply areg_sound; auto.
 Qed.

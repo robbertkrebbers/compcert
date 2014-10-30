@@ -528,7 +528,7 @@ Inductive match_globdef: ident * globdef A V -> ident * globdef B W -> Prop :=
 Definition match_program (new_globs : list (ident * globdef B W))
                          (new_main : ident)
                          (p1: program A V)  (p2: program B W) : Prop :=
-  (exists tglob, list_forall2 match_globdef p1.(prog_defs) tglob /\
+  (exists tglob, Forall2 match_globdef p1.(prog_defs) tglob /\
                  p2.(prog_defs) = tglob ++ new_globs) /\
   p2.(prog_main) = new_main.
 

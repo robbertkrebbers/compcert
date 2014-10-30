@@ -826,7 +826,7 @@ Axiom loadbytes_extends:
   extends m1 m2 ->
   loadbytes m1 b ofs len = Some bytes1 ->
   exists bytes2, loadbytes m2 b ofs len = Some bytes2
-              /\ list_forall2 memval_lessdef bytes1 bytes2.
+              /\ Forall2 memval_lessdef bytes1 bytes2.
 
 Axiom store_within_extends:
   forall chunk m1 m2 b ofs v1 m1' v2,
@@ -858,7 +858,7 @@ Axiom storebytes_within_extends:
   forall m1 m2 b ofs bytes1 m1' bytes2,
   extends m1 m2 ->
   storebytes m1 b ofs bytes1 = Some m1' ->
-  list_forall2 memval_lessdef bytes1 bytes2 ->
+  Forall2 memval_lessdef bytes1 bytes2 ->
   exists m2',
      storebytes m2 b ofs bytes2 = Some m2'
   /\ extends m1' m2'.
@@ -1052,7 +1052,7 @@ Axiom loadbytes_inject:
   loadbytes m1 b1 ofs len = Some bytes1 ->
   f b1 = Some (b2, delta) ->
   exists bytes2, loadbytes m2 b2 (ofs + delta) len = Some bytes2
-              /\ list_forall2 (memval_inject f) bytes1 bytes2.
+              /\ Forall2 (memval_inject f) bytes1 bytes2.
 
 Axiom store_mapped_inject:
   forall f chunk m1 b1 ofs v1 n1 m2 b2 delta v2,
@@ -1095,7 +1095,7 @@ Axiom storebytes_mapped_inject:
   inject f m1 m2 ->
   storebytes m1 b1 ofs bytes1 = Some n1 ->
   f b1 = Some (b2, delta) ->
-  list_forall2 (memval_inject f) bytes1 bytes2 ->
+  Forall2 (memval_inject f) bytes1 bytes2 ->
   exists n2,
     storebytes m2 b2 (ofs + delta) bytes2 = Some n2
     /\ inject f n1 n2.

@@ -91,7 +91,7 @@ Definition regs_lessdef (rs1 rs2: regset) : Prop :=
 
 Lemma regs_lessdef_regs:
   forall rs1 rs2, regs_lessdef rs1 rs2 ->
-  forall rl, Val.lessdef_list rs1##rl rs2##rl.
+  forall rl, Forall2 Val.lessdef rs1##rl rs2##rl.
 Proof.
   induction rl; constructor; auto.
 Qed.
@@ -106,7 +106,7 @@ Qed.
 
 Lemma init_regs_lessdef:
   forall rl vl1 vl2,
-  Val.lessdef_list vl1 vl2 ->
+  Forall2 Val.lessdef vl1 vl2 ->
   regs_lessdef (init_regs vl1 rl) (init_regs vl2 rl).
 Proof.
   induction rl; simpl; intros.
@@ -319,7 +319,7 @@ Inductive match_states: nat -> state * mem -> state * mem -> Prop :=
   | match_states_intro:
       forall s sp pc rs m f s' pc' rs' m' bc ae n
            (MATCH: ematch bc rs ae)
-           (STACKS: list_forall2 match_stackframes s s')
+           (STACKS: Forall2 match_stackframes s s')
            (PC: match_pc f ae n pc pc')
            (REGS: regs_lessdef rs rs')
            (MEM: Mem.extends m m'),
@@ -327,24 +327,24 @@ Inductive match_states: nat -> state * mem -> state * mem -> Prop :=
                     (State s' (transf_function rm f) sp pc' rs', m')
   | match_states_call:
       forall s f args m s' args' m'
-           (STACKS: list_forall2 match_stackframes s s')
-           (ARGS: Val.lessdef_list args args')
+           (STACKS: Forall2 match_stackframes s s')
+           (ARGS: Forall2 Val.lessdef args args')
            (MEM: Mem.extends m m'),
       match_states O (Callstate s f args, m)
                      (Callstate s' (transf_fundef rm f) args', m')
   | match_states_return:
       forall s v m s' v' m'
-           (STACKS: list_forall2 match_stackframes s s')
+           (STACKS: Forall2 match_stackframes s s')
            (RES: Val.lessdef v v')
            (MEM: Mem.extends m m'),
-      list_forall2 match_stackframes s s' ->
+      Forall2 match_stackframes s s' ->
       match_states O (Returnstate s v, m)
                      (Returnstate s' v', m').
 
 Lemma match_states_succ:
   forall s f sp pc rs m s' rs' m',
   sound_state prog (State s f sp pc rs, m) ->
-  list_forall2 match_stackframes s s' ->
+  Forall2 match_stackframes s s' ->
   regs_lessdef rs rs' ->
   Mem.extends m m' ->
   match_states O (State s f sp pc rs, m)

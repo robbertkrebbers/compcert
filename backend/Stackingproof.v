@@ -700,7 +700,7 @@ Qed.
 
 Lemma agree_reglist:
   forall j ls rs rl,
-  agree_regs j ls rs -> val_list_inject j (reglist ls rl) (rs##rl).
+  agree_regs j ls rs -> Forall2 (val_inject j) (reglist ls rl) (rs##rl).
 Proof.
   induction rl; simpl; intros.
   auto. constructor. eauto with stacking. auto. 
@@ -725,7 +725,7 @@ Qed.
 Lemma agree_regs_set_regs:
   forall j rl vl vl' ls rs,
   agree_regs j ls rs ->
-  val_list_inject j vl vl' ->
+  Forall2 (val_inject j) vl vl' ->
   agree_regs j (Locmap.setlist (map R rl) vl ls) (set_regs rl vl' rs).
 Proof.
   induction rl; simpl; intros. 
@@ -2347,7 +2347,7 @@ Lemma transl_external_arguments_rec:
   forall locs,
   incl locs (loc_arguments sg) ->
   exists vl,
-  list_forall2 (extcall_arg rs m' (parent_sp cs')) locs vl /\ val_list_inject j ls##locs vl.
+  Forall2 (extcall_arg rs m' (parent_sp cs')) locs vl /\ Forall2 (val_inject j) ls##locs vl.
 Proof.
   induction locs; simpl; intros.
   exists (@nil val); split. constructor. constructor.
@@ -2359,7 +2359,7 @@ Qed.
 Lemma transl_external_arguments:
   exists vl,
   extcall_arguments rs m' (parent_sp cs') sg vl /\
-  val_list_inject j (ls ## (loc_arguments sg)) vl.
+  Forall2 (val_inject j) (ls ## (loc_arguments sg)) vl.
 Proof.
   unfold extcall_arguments. 
   apply transl_external_arguments_rec.
@@ -2406,7 +2406,7 @@ Lemma transl_annot_params_correct:
   (forall sl ofs ty, In (S sl ofs ty) ll -> slot_within_bounds b sl ofs ty) ->
   exists vl,
      annot_arguments rs m' (Vptr sp' Int.zero) (map (transl_annot_param fe) ll) vl
-  /\ val_list_inject j (map ls ll) vl.
+  /\ Forall2 (val_inject j) (map ls ll) vl.
 Proof.
   induction ll; simpl; intros. 
   exists (@nil val); split; constructor.

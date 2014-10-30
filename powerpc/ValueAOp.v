@@ -120,7 +120,7 @@ Hypothesis STACK: bc sp = BCstack.
 
 Theorem eval_static_condition_sound:
   forall cond vargs m aargs,
-  list_forall2 (vmatch bc) vargs aargs ->
+  Forall2 (vmatch bc) vargs aargs ->
   cmatch (eval_condition cond vargs m) (eval_static_condition cond aargs).
 Proof.
   intros until aargs; intros VM.
@@ -147,14 +147,14 @@ Ltac InvHyps :=
   | [H: None = Some _ |- _ ] => discriminate
   | [H: Some _ = Some _ |- _] => inv H
   | [H1: match ?vl with nil => _ | _ :: _ => _ end = Some _ ,
-     H2: list_forall2 _ ?vl _ |- _ ] => inv H2; InvHyps
+     H2: Forall2 _ ?vl _ |- _ ] => inv H2; InvHyps
   | _ => idtac
   end.
 
 Theorem eval_static_addressing_sound:
   forall addr vargs vres aargs,
   eval_addressing ge (Vptr sp Int.zero) addr vargs = Some vres ->
-  list_forall2 (vmatch bc) vargs aargs ->
+  Forall2 (vmatch bc) vargs aargs ->
   vmatch bc vres (eval_static_addressing addr aargs).
 Proof.
   unfold eval_addressing, eval_static_addressing; intros;
@@ -165,7 +165,7 @@ Qed.
 Theorem eval_static_operation_sound:
   forall op vargs m vres aargs,
   eval_operation ge (Vptr sp Int.zero) op vargs m = Some vres ->
-  list_forall2 (vmatch bc) vargs aargs ->
+  Forall2 (vmatch bc) vargs aargs ->
   vmatch bc vres (eval_static_operation op aargs).
 Proof.
   unfold eval_operation, eval_static_operation; intros;
@@ -173,10 +173,9 @@ Proof.
   destruct (propagate_float_constants tt); constructor.
   destruct (propagate_float_constants tt); constructor.
   rewrite Int.add_zero_l; eauto with va.
-  fold (Val.sub (Vint i) a1). auto with va.
+  fold (Val.sub (Vint i) x). auto with va.
   apply floatofwords_sound; auto. 
   apply of_optbool_sound. eapply eval_static_condition_sound; eauto. 
 Qed.
 
 End SOUNDNESS.
-

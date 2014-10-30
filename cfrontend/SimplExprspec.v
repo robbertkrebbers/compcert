@@ -1129,7 +1129,7 @@ Qed.
 Lemma transl_globdefs_spec:
   forall l g l',
   transl_globdefs l g = OK l' ->
-  list_forall2 (match_globdef tr_fundef (fun v1 v2 => v1 = v2)) l l'.
+  Forall2 (match_globdef tr_fundef (fun v1 v2 => v1 = v2)) l l'.
 Proof.
   induction l; simpl; intros.
 - inv H. constructor.

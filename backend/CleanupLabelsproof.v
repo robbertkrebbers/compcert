@@ -210,18 +210,18 @@ Inductive match_stackframes: stackframe -> stackframe -> Prop :=
 Inductive match_states: state * mem -> state * mem -> Prop :=
   | match_states_intro:
       forall s f sp c ls m ts
-        (STACKS: list_forall2 match_stackframes s ts)
+        (STACKS: Forall2 match_stackframes s ts)
         (INCL: incl c f.(fn_code)),
       match_states (State s f sp c ls, m)
                    (State ts (transf_function f) sp (remove_unused_labels (labels_branched_to f.(fn_code)) c) ls, m)
   | match_states_call:
       forall s f ls m ts,
-      list_forall2 match_stackframes s ts ->
+      Forall2 match_stackframes s ts ->
       match_states (Callstate s f ls, m)
                    (Callstate ts (transf_fundef f) ls, m)
   | match_states_return:
       forall s ls m ts,
-      list_forall2 match_stackframes s ts ->
+      Forall2 match_stackframes s ts ->
       match_states (Returnstate s ls, m)
                    (Returnstate ts ls, m).
 
@@ -233,7 +233,7 @@ Definition measure (st: state * mem) : nat :=
 
 Lemma match_parent_locset:
   forall s ts,
-  list_forall2 match_stackframes s ts ->
+  Forall2 match_stackframes s ts ->
   parent_locset ts = parent_locset s.
 Proof.
   induction 1; simpl. auto. inv H; auto.
@@ -348,7 +348,7 @@ Proof.
   rewrite symbols_preserved; eauto.
   apply function_ptr_translated; auto.
   rewrite sig_function_translated. auto.
-  constructor; auto. constructor.
+  constructor; auto.
 Qed.
 
 Lemma transf_final_states:

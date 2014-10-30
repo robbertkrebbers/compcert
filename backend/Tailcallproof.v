@@ -206,7 +206,7 @@ Definition regset_lessdef (rs rs': regset) : Prop :=
 
 Lemma regset_get_list:
   forall rs rs' l,
-  regset_lessdef rs rs' -> Val.lessdef_list (rs##l) (rs'##l).
+  regset_lessdef rs rs' -> Forall2 Val.lessdef (rs##l) (rs'##l).
 Proof.
   induction l; simpl; intros; constructor; auto.
 Qed.
@@ -221,7 +221,7 @@ Qed.
 
 Lemma regset_init_regs:
   forall params vl vl',
-  Val.lessdef_list vl vl' ->
+  Forall2 Val.lessdef vl vl' ->
   regset_lessdef (init_regs vl params) (init_regs vl' params).
 Proof.
   induction params; intros.
@@ -357,7 +357,7 @@ Inductive match_states: state * mem -> state * mem -> Prop :=
   | match_states_call:
       forall s f args m s' args' m',
       match_stackframes s s' ->
-      Val.lessdef_list args args' ->
+      Forall2 Val.lessdef args args' ->
       Mem.extends m m' ->
       match_states (Callstate s f args, m)
                    (Callstate s' (transf_fundef f) args', m')
@@ -436,7 +436,7 @@ Proof.
 
 (* op *)
   TransfInstr.
-  assert (Val.lessdef_list (rs##args) (rs'##args)). apply regset_get_list; auto. 
+  assert (Forall2 Val.lessdef (rs##args) (rs'##args)). apply regset_get_list; auto. 
   exploit eval_operation_lessdef; eauto. 
   intros [v' [EVAL' VLD]]. 
   left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) pc' (rs'#res <- v'), m'); split.
@@ -450,7 +450,7 @@ Proof.
 
 (* load *)
   TransfInstr.
-  assert (Val.lessdef_list (rs##args) (rs'##args)). apply regset_get_list; auto. 
+  assert (Forall2 Val.lessdef (rs##args) (rs'##args)). apply regset_get_list; auto. 
   exploit eval_addressing_lessdef; eauto. 
   intros [a' [ADDR' ALD]].
   exploit Mem.loadv_extends; eauto. 
@@ -462,7 +462,7 @@ Proof.
 
 (* store *)
   TransfInstr.
-  assert (Val.lessdef_list (rs##args) (rs'##args)). apply regset_get_list; auto. 
+  assert (Forall2 Val.lessdef (rs##args) (rs'##args)). apply regset_get_list; auto. 
   exploit eval_addressing_lessdef; eauto. 
   intros [a' [ADDR' ALD]].
   exploit Mem.storev_extends. 2: eexact H1. eauto. eauto. apply RLD.  
@@ -503,7 +503,7 @@ Proof.
 
 (* builtin *)
   TransfInstr.
-  assert (Val.lessdef_list (rs##args) (rs'##args)). apply regset_get_list; auto. 
+  assert (Forall2 Val.lessdef (rs##args) (rs'##args)). apply regset_get_list; auto. 
   exploit builtin_call_mem_extends; eauto.
   intros [v' [m'1 [A [B [C D]]]]].
   left. exists (State s' (transf_function f) (Vptr sp0 Int.zero) pc' (rs'#res <- v'), m'1); split.

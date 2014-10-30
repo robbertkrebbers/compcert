@@ -126,7 +126,7 @@ Qed.
 
 Lemma agree_val_regs_gen:
   forall F ctx rs rs' rl,
-  agree_regs F ctx rs rs' -> list_forall2 (val_reg_charact F ctx rs') rs##rl rl.
+  agree_regs F ctx rs rs' -> Forall2 (val_reg_charact F ctx rs') rs##rl rl.
 Proof.
   induction rl; intros; constructor; auto. apply agree_val_reg_gen; auto.
 Qed.
@@ -140,7 +140,7 @@ Proof.
 Qed.
 
 Lemma agree_val_regs:
-  forall F ctx rs rs' rl, agree_regs F ctx rs rs' -> val_list_inject F rs##rl rs'##(sregs ctx rl).
+  forall F ctx rs rs' rl, agree_regs F ctx rs rs' -> Forall2 (val_inject F) rs##rl rs'##(sregs ctx rl).
 Proof.
   induction rl; intros; simpl. constructor. constructor; auto. apply agree_val_reg; auto.
 Qed.
@@ -212,7 +212,7 @@ Qed.
 
 Lemma agree_regs_init_regs:
   forall F ctx rl vl vl',
-  val_list_inject F vl vl' ->
+  Forall2 (val_inject F) vl vl' ->
   (forall r, In r rl -> Ple r ctx.(mreg)) ->
   agree_regs F ctx (init_regs vl rl) (init_regs vl' (sregs ctx rl)).
 Proof.
@@ -229,7 +229,7 @@ Lemma tr_moves_init_regs:
   forall rdsts rsrcs vl pc1 pc2 rs1,
   tr_moves f.(fn_code) pc1 (sregs ctx1 rsrcs) (sregs ctx2 rdsts) pc2 ->
   (forall r, In r rdsts -> Ple r ctx2.(mreg)) ->
-  list_forall2 (val_reg_charact F ctx1 rs1) vl rsrcs ->
+  Forall2 (val_reg_charact F ctx1 rs1) vl rsrcs ->
   exists rs2,
     star (step tge) (State stk f sp pc1 rs1, m)
                  E0 (State stk f sp pc2 rs2, m)
@@ -244,10 +244,10 @@ Proof.
   exists rs1; split. apply star_refl. split. apply agree_regs_init. auto.
   simpl in H0. inv H0.
   exploit IHrdsts; eauto. intros [rs2 [A [B C]]].
-  exists (rs2#(sreg ctx2 a) <- (rs2#(sreg ctx1 b1))).
+  exists (rs2#(sreg ctx2 a) <- (rs2#(sreg ctx1 y))).
   split. eapply star_right. eauto. eapply exec_Iop; eauto. traceEq.
   split. destruct H3 as [[P Q] | [P Q]].
-  subst a1. eapply agree_set_reg_undef; eauto.
+  subst x. eapply agree_set_reg_undef; eauto.
   eapply agree_set_reg; eauto. rewrite C; auto.  apply context_below_lt; auto.
   intros. rewrite Regmap.gso. auto. apply sym_not_equal. eapply sreg_below_diff; eauto.
   destruct H2; discriminate.
@@ -793,7 +793,7 @@ Inductive match_states: state * mem -> state * mem -> Prop :=
   | match_call_states: forall stk fd args m stk' fd' args' m' F
         (MS: match_stacks F m m' stk stk' (Mem.nextblock m'))
         (FD: transf_fundef fenv fd = OK fd')
-        (VINJ: val_list_inject F args args')
+        (VINJ: Forall2 (val_inject F) args args')
         (MINJ: Mem.inject F m m'),
       match_states (Callstate stk fd args, m)
                    (Callstate stk' fd' args', m')
@@ -803,7 +803,7 @@ Inductive match_states: state * mem -> state * mem -> Prop :=
         (BELOW: context_below ctx' ctx)
         (NOP: f'.(fn_code)!pc' = Some(Inop pc1'))
         (MOVES: tr_moves f'.(fn_code) pc1' (sregs ctx' rargs) (sregs ctx f.(fn_params)) (spc ctx f.(fn_entrypoint)))
-        (VINJ: list_forall2 (val_reg_charact F ctx' rs') vargs rargs)
+        (VINJ: Forall2 (val_reg_charact F ctx' rs') vargs rargs)
         (MINJ: Mem.inject F m m')
         (VB: Mem.valid_block m' sp')
         (PRIV: range_private F m m' sp' ctx.(dstk) f'.(fn_stacksize))

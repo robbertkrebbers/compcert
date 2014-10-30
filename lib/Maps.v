@@ -798,7 +798,7 @@ Module PTree <: TREE.
     forall (A B: Type) (R: A -> B -> Prop) (m: t A) (n: t B),
     (forall i x, get i m = Some x -> exists y, get i n = Some y /\ R x y) ->
     (forall i y, get i n = Some y -> exists x, get i m = Some x /\ R x y) ->
-    list_forall2
+    Forall2
       (fun i_x i_y => fst i_x = fst i_y /\ R (snd i_x) (snd i_y))
       (elements m) (elements n).
   Proof.
@@ -806,7 +806,7 @@ Module PTree <: TREE.
     assert (forall m n j,
     (forall i x, get i m = Some x -> exists y, get i n = Some y /\ R x y) ->
     (forall i y, get i n = Some y -> exists x, get i m = Some x /\ R x y) ->
-    list_forall2
+    Forall2
       (fun i_x i_y => fst i_x = fst i_y /\ R (snd i_x) (snd i_y))
       (xelements m j nil) (xelements n j nil)).
   {
@@ -818,11 +818,11 @@ Module PTree <: TREE.
     + rewrite xelements_leaf, xelements_empty. constructor.
       intros. destruct (get i (Node m1 o m2)) eqn:E; auto. exploit H; eauto. 
       intros [x [P Q]]. rewrite gleaf in P; congruence.
-    + rewrite ! xelements_node. apply list_forall2_app.
+    + rewrite ! xelements_node. apply Forall2_app.
       apply IHm1. 
       intros. apply (H (xO i) x); auto. 
       intros. apply (H0 (xO i) y); auto.
-      apply list_forall2_app. 
+      apply Forall2_app. 
       destruct o, o'.
       destruct (H xH a) as [x [P Q]]. auto. simpl in P. inv P. 
       constructor. auto. constructor.
@@ -845,7 +845,7 @@ Module PTree <: TREE.
     exploit (elements_canonical_order (fun (x y: A) => x = y) m n). 
     intros. rewrite H in H0. exists x; auto.
     intros. rewrite <- H in H0. exists y; auto.
-    induction 1. auto. destruct a1 as [a2 a3]; destruct b1 as [b2 b3]; simpl in *.
+    induction 1. auto. destruct x as [a2 a3]; destruct y as [b2 b3]; simpl in *.
     destruct H0. congruence.
   Qed.
 

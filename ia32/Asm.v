@@ -793,7 +793,7 @@ Inductive extcall_arg (rs: regset) (m: mem): loc -> val -> Prop :=
 
 Definition extcall_arguments
     (rs: regset) (m: mem) (sg: signature) (args: list val) : Prop :=
-  list_forall2 (extcall_arg rs m) (loc_arguments sg) args.
+  Forall2 (extcall_arg rs m) (loc_arguments sg) args.
 
 Definition loc_external_result (sg: signature) : list preg :=
   map preg_of (loc_result sg).
@@ -810,7 +810,7 @@ Inductive annot_arg (rs: regset) (m: mem): annot_param -> val -> Prop :=
 
 Definition annot_arguments
     (rs: regset) (m: mem) (params: list annot_param) (args: list val) : Prop :=
-  list_forall2 (annot_arg rs m) params args.
+  Forall2 (annot_arg rs m) params args.
 
 (** Execution of the instruction at [rs#PC]. *)
 
@@ -906,8 +906,8 @@ Remark extcall_arguments_determ:
   extcall_arguments rs m sg args1 -> extcall_arguments rs m sg args2 -> args1 = args2.
 Proof.
   intros until m.
-  assert (forall ll vl1, list_forall2 (extcall_arg rs m) ll vl1 ->
-          forall vl2, list_forall2 (extcall_arg rs m) ll vl2 -> vl1 = vl2).
+  assert (forall ll vl1, Forall2 (extcall_arg rs m) ll vl1 ->
+          forall vl2, Forall2 (extcall_arg rs m) ll vl2 -> vl1 = vl2).
     induction 1; intros vl2 EA; inv EA.
     auto.
     f_equal; auto. 

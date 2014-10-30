@@ -742,21 +742,21 @@ Qed.
 
 Lemma proj_bytes_inject:
   forall f vl vl',
-  list_forall2 (memval_inject f) vl vl' ->
+  Forall2 (memval_inject f) vl vl' ->
   forall bl,
   proj_bytes vl = Some bl ->
   proj_bytes vl' = Some bl.
 Proof.
   induction 1; simpl. congruence.
   inv H; try congruence.
-  destruct (proj_bytes al); intros. 
-  inv H. rewrite (IHlist_forall2 l); auto. 
+  destruct (proj_bytes l); intros. 
+  inv H. rewrite (IHForall2 l0); auto. 
   congruence.
 Qed.
 
 Lemma check_value_inject:
   forall f vl vl',
-  list_forall2 (memval_inject f) vl vl' ->
+  Forall2 (memval_inject f) vl vl' ->
   forall v v' q n,
   check_value n v q vl = true ->
   val_inject f v v' -> v <> Vundef ->
@@ -773,27 +773,27 @@ Qed.
 
 Lemma proj_value_inject:
   forall f q vl1 vl2,
-  list_forall2 (memval_inject f) vl1 vl2 ->
+  Forall2 (memval_inject f) vl1 vl2 ->
   val_inject f (proj_value q vl1) (proj_value q vl2).
 Proof.
   intros. unfold proj_value. 
   inversion H; subst. auto. inversion H0; subst; auto.
-  destruct (check_value (size_quantity_nat q) v1 q (Fragment v1 q0 n :: al)) eqn:B; auto.
+  destruct (check_value (size_quantity_nat q) v1 q (Fragment v1 q0 n :: l)) eqn:B; auto.
   destruct (Val.eq v1 Vundef). subst; auto. 
   erewrite check_value_inject by eauto. auto.
 Qed.
 
 Lemma proj_bytes_not_inject:
   forall f vl vl',
-  list_forall2 (memval_inject f) vl vl' ->
+  Forall2 (memval_inject f) vl vl' ->
   proj_bytes vl = None -> proj_bytes vl' <> None -> In Undef vl.
 Proof.
   induction 1; simpl; intros.
   congruence.
   inv H; try congruence. 
-  right. apply IHlist_forall2.
-  destruct (proj_bytes al); congruence.
-  destruct (proj_bytes bl); congruence.
+  right. apply IHForall2.
+  destruct (proj_bytes l); congruence.
+  destruct (proj_bytes l'); congruence.
   auto.
 Qed.
 
@@ -818,7 +818,7 @@ Qed.
 
 Theorem decode_val_inject:
   forall f vl1 vl2 chunk,
-  list_forall2 (memval_inject f) vl1 vl2 ->
+  Forall2 (memval_inject f) vl1 vl2 ->
   val_inject f (decode_val chunk vl1) (decode_val chunk vl2).
 Proof.
   intros. unfold decode_val. 
@@ -843,34 +843,34 @@ Qed.
   related by [memval_inject]. *)
 
 Lemma inj_bytes_inject:
-  forall f bl, list_forall2 (memval_inject f) (inj_bytes bl) (inj_bytes bl).
+  forall f bl, Forall2 (memval_inject f) (inj_bytes bl) (inj_bytes bl).
 Proof.
   induction bl; constructor; auto. constructor.
 Qed.
 
 Lemma repeat_Undef_inject_any:
   forall f vl,
-  list_forall2 (memval_inject f) (list_repeat (length vl) Undef) vl.
+  Forall2 (memval_inject f) (list_repeat (length vl) Undef) vl.
 Proof.
   induction vl; simpl; constructor; auto. constructor. 
 Qed.  
 
 Lemma repeat_Undef_inject_encode_val:
   forall f chunk v,
-  list_forall2 (memval_inject f) (list_repeat (size_chunk_nat chunk) Undef) (encode_val chunk v).
+  Forall2 (memval_inject f) (list_repeat (size_chunk_nat chunk) Undef) (encode_val chunk v).
 Proof.
   intros. rewrite <- (encode_val_length chunk v). apply repeat_Undef_inject_any.
 Qed.
 
 Lemma repeat_Undef_inject_self:
   forall f n,
-  list_forall2 (memval_inject f) (list_repeat n Undef) (list_repeat n Undef).
+  Forall2 (memval_inject f) (list_repeat n Undef) (list_repeat n Undef).
 Proof.
   induction n; simpl; constructor; auto. constructor.
 Qed.  
 
 Lemma inj_value_inject:
-  forall f v1 v2 q, val_inject f v1 v2 -> list_forall2 (memval_inject f) (inj_value q v1) (inj_value q v2).
+  forall f v1 v2 q, val_inject f v1 v2 -> Forall2 (memval_inject f) (inj_value q v1) (inj_value q v2).
 Proof.
   intros.
 Local Transparent inj_value.
@@ -881,7 +881,7 @@ Qed.
 Theorem encode_val_inject:
   forall f v1 v2 chunk,
   val_inject f v1 v2 ->
-  list_forall2 (memval_inject f) (encode_val chunk v1) (encode_val chunk v2).
+  Forall2 (memval_inject f) (encode_val chunk v1) (encode_val chunk v2).
 Proof.
   intros. inversion H; subst; simpl; destruct chunk;
   auto using inj_bytes_inject, inj_value_inject, repeat_Undef_inject_self, repeat_Undef_inject_encode_val.

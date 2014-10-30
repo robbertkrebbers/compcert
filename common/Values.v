@@ -1362,22 +1362,14 @@ Proof.
   intros. inv H. auto. constructor.
 Qed.
 
-Inductive lessdef_list: list val -> list val -> Prop :=
-  | lessdef_list_nil:
-      lessdef_list nil nil
-  | lessdef_list_cons:
-      forall v1 v2 vl1 vl2,
-      lessdef v1 v2 -> lessdef_list vl1 vl2 ->
-      lessdef_list (v1 :: vl1) (v2 :: vl2).
-
-Hint Resolve lessdef_refl lessdef_undef lessdef_list_nil lessdef_list_cons.
+Hint Resolve lessdef_refl lessdef_undef.
 
 Lemma lessdef_list_inv:
-  forall vl1 vl2, lessdef_list vl1 vl2 -> vl1 = vl2 \/ In Vundef vl1.
+  forall vl1 vl2, Forall2 lessdef vl1 vl2 -> vl1 = vl2 \/ In Vundef vl1.
 Proof.
   induction 1; simpl.
   tauto.
-  inv H. destruct IHlessdef_list. 
+  inv H. destruct IHForall2. 
   left; congruence. tauto. tauto.
 Qed.
 
@@ -1502,15 +1494,6 @@ Inductive val_inject (mi: meminj): val -> val -> Prop :=
       val_inject mi Vundef v.
 
 Hint Constructors val_inject.
-
-Inductive val_list_inject (mi: meminj): list val -> list val-> Prop:= 
-  | val_nil_inject :
-      val_list_inject mi nil nil
-  | val_cons_inject : forall v v' vl vl' , 
-      val_inject mi v v' -> val_list_inject mi vl vl'->
-      val_list_inject mi (v :: vl) (v' :: vl').  
-
-Hint Resolve val_nil_inject val_cons_inject.
 
 Section VAL_INJ_OPS.
 
@@ -1670,30 +1653,14 @@ Qed.
 
 Lemma val_list_inject_incr:
   forall f1 f2 vl vl' ,
-  inject_incr f1 f2 -> val_list_inject f1 vl vl' ->
-  val_list_inject f2 vl vl'.
+  inject_incr f1 f2 -> Forall2 (val_inject f1) vl vl' ->
+  Forall2 (val_inject f2) vl vl'.
 Proof.
-  induction vl; intros; inv H0. auto.
+  induction 2; intros; auto.
   constructor. eapply val_inject_incr; eauto. auto.
 Qed.
 
 Hint Resolve inject_incr_refl val_inject_incr val_list_inject_incr.
-
-Lemma val_inject_lessdef:
-  forall v1 v2, Val.lessdef v1 v2 <-> val_inject (fun b => Some(b, 0)) v1 v2.
-Proof.
-  intros; split; intros.
-  inv H; auto. destruct v2; econstructor; eauto. rewrite Int.add_zero; auto. 
-  inv H; auto. inv H0. rewrite Int.add_zero; auto.
-Qed.
-
-Lemma val_list_inject_lessdef:
-  forall vl1 vl2, Val.lessdef_list vl1 vl2 <-> val_list_inject (fun b => Some(b, 0)) vl1 vl2.
-Proof.
-  intros; split.
-  induction 1; constructor; auto. apply val_inject_lessdef; auto.
-  induction 1; constructor; auto. apply val_inject_lessdef; auto.
-Qed.
 
 (** The identity injection gives rise to the "less defined than" relation. *)
 
@@ -1709,6 +1676,23 @@ Proof.
   inv H. destruct v2; econstructor. unfold inject_id; reflexivity. rewrite Int.add_zero; auto.
   constructor.
 Qed.
+
+Lemma val_inject_lessdef:
+  forall v1 v2, Val.lessdef v1 v2 <-> val_inject inject_id v1 v2.
+Proof.
+  unfold inject_id. intros; split; intros.
+  inv H; auto. destruct v2; econstructor; eauto. rewrite Int.add_zero; auto. 
+  inv H; auto. inv H0. rewrite Int.add_zero; auto.
+Qed.
+
+Lemma val_list_inject_lessdef:
+  forall vl1 vl2, Forall2 Val.lessdef vl1 vl2 <-> Forall2 (val_inject inject_id) vl1 vl2.
+Proof.
+  intros; split.
+  induction 1; constructor; auto. apply val_inject_lessdef; auto.
+  induction 1; constructor; auto. apply val_inject_lessdef; auto.
+Qed.
+
 
 (** Composing two memory injections *)
 

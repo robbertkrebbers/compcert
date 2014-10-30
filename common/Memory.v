@@ -2284,9 +2284,9 @@ Lemma getN_inj:
   f b1 = Some(b2, delta) ->
   forall n ofs,
   range_perm m1 b1 ofs (ofs + Z_of_nat n) Cur Readable ->
-  list_forall2 (memval_inject f) 
-               (getN n ofs (m1.(mem_contents)#b1))
-               (getN n (ofs + delta) (m2.(mem_contents)#b2)).
+  Forall2 (memval_inject f) 
+          (getN n ofs (m1.(mem_contents)#b1))
+          (getN n (ofs + delta) (m2.(mem_contents)#b2)).
 Proof.
   induction n; intros; simpl.
   constructor.
@@ -2320,7 +2320,7 @@ Lemma loadbytes_inj:
   loadbytes m1 b1 ofs len = Some bytes1 ->
   f b1 = Some (b2, delta) ->
   exists bytes2, loadbytes m2 b2 (ofs + delta) len = Some bytes2
-              /\ list_forall2 (memval_inject f) bytes1 bytes2.
+              /\ Forall2 (memval_inject f) bytes1 bytes2.
 Proof.
   intros. unfold loadbytes in *. 
   destruct (range_perm_dec m1 b1 ofs (ofs + len) Cur Readable); inv H0.
@@ -2337,7 +2337,7 @@ Qed.
 
 Lemma setN_inj:
   forall (access: Z -> Prop) delta f vl1 vl2,
-  list_forall2 (memval_inject f) vl1 vl2 ->
+  Forall2 (memval_inject f) vl1 vl2 ->
   forall p c1 c2,
   (forall q, access q -> memval_inject f (ZMap.get q c1) (ZMap.get (q + delta) c2)) ->
   (forall q, access q -> memval_inject f (ZMap.get q (setN vl1 p c1)) 
@@ -2346,7 +2346,7 @@ Proof.
   induction 1; intros; simpl. 
   auto.
   replace (p + delta + 1) with ((p + 1) + delta) by omega.
-  apply IHlist_forall2; auto. 
+  apply IHForall2; auto. 
   intros. rewrite ZMap.gsspec at 1. destruct (ZIndexed.eq q0 p). subst q0.
   rewrite ZMap.gss. auto. 
   rewrite ZMap.gso. auto. unfold ZIndexed.t in *. omega.
@@ -2463,7 +2463,7 @@ Lemma storebytes_mapped_inj:
   storebytes m1 b1 ofs bytes1 = Some n1 ->
   meminj_no_overlap f m1 ->
   f b1 = Some (b2, delta) ->
-  list_forall2 (memval_inject f) bytes1 bytes2 ->
+  Forall2 (memval_inject f) bytes1 bytes2 ->
   exists n2,
     storebytes m2 b2 (ofs + delta) bytes2 = Some n2
     /\ mem_inj f n1 n2.
@@ -2474,7 +2474,7 @@ Proof.
        with ((ofs + Z_of_nat (length bytes1)) + delta).
     eapply range_perm_inj; eauto with mem. 
     eapply storebytes_range_perm; eauto.
-    rewrite (list_forall2_length H3). omega.
+    rewrite (Forall2_length H3). omega.
   destruct (range_perm_storebytes _ _ _ _ H4) as [n2 STORE]. 
   exists n2; split. eauto.
   constructor.
@@ -2505,7 +2505,7 @@ Proof.
     eapply H1; eauto 6 with mem.
     exploit storebytes_range_perm. eexact H0. 
     instantiate (1 := r - delta). 
-    rewrite (list_forall2_length H3). omega.
+    rewrite (Forall2_length H3). omega.
     eauto 6 with mem.
   destruct H9. congruence. omega.
   (* block <> b1, block <> b2 *)
@@ -2867,7 +2867,7 @@ Theorem loadbytes_extends:
   extends m1 m2 ->
   loadbytes m1 b ofs len = Some bytes1 ->
   exists bytes2, loadbytes m2 b ofs len = Some bytes2
-              /\ list_forall2 memval_lessdef bytes1 bytes2.
+              /\ Forall2 memval_lessdef bytes1 bytes2.
 Proof.
   intros. inv H.
   replace ofs with (ofs + 0) by omega. eapply loadbytes_inj; eauto. 
@@ -2928,7 +2928,7 @@ Theorem storebytes_within_extends:
   forall m1 m2 b ofs bytes1 m1' bytes2,
   extends m1 m2 ->
   storebytes m1 b ofs bytes1 = Some m1' ->
-  list_forall2 memval_lessdef bytes1 bytes2 ->
+  Forall2 memval_lessdef bytes1 bytes2 ->
   exists m2',
      storebytes m2 b ofs bytes2 = Some m2'
   /\ extends m1' m2'.
@@ -3402,7 +3402,7 @@ Theorem loadbytes_inject:
   loadbytes m1 b1 ofs len = Some bytes1 ->
   f b1 = Some (b2, delta) ->
   exists bytes2, loadbytes m2 b2 (ofs + delta) len = Some bytes2
-              /\ list_forall2 (memval_inject f) bytes1 bytes2.
+              /\ Forall2 (memval_inject f) bytes1 bytes2.
 Proof.
   intros. inv H. eapply loadbytes_inj; eauto. 
 Qed.
@@ -3502,7 +3502,7 @@ Theorem storebytes_mapped_inject:
   inject f m1 m2 ->
   storebytes m1 b1 ofs bytes1 = Some n1 ->
   f b1 = Some (b2, delta) ->
-  list_forall2 (memval_inject f) bytes1 bytes2 ->
+  Forall2 (memval_inject f) bytes1 bytes2 ->
   exists n2,
     storebytes m2 b2 (ofs + delta) bytes2 = Some n2
     /\ inject f n1 n2.
@@ -4303,7 +4303,7 @@ End UNCHANGED_ON.
 new objects may be allocated and permissions may be dropped. *)
 
 Definition forward (m1 m2:mem) :=
-  (forall b, Mem.valid_block m1 b ->
+  (forall b, valid_block m1 b ->
     valid_block m2 b /\ 
     forall ofs p, perm m2 b ofs Max p -> perm m1 b ofs Max p).
 
@@ -4329,7 +4329,7 @@ Proof.
     now rewrite (unchanged_on_perm _ _ _ H),
       (unchanged_on_perm _ _ _ H0) by auto. }
   intros b ofs ??. assert (perm m2 b ofs Cur Readable).
-  { eapply H; eauto using Mem.perm_valid_block. }
+  { eapply H; eauto using perm_valid_block. }
   now rewrite <-(unchanged_on_contents _ _ _ H),
     <-(unchanged_on_contents _ _ _ H0) by auto.
 Qed.
@@ -4338,7 +4338,7 @@ Lemma store_forward:
   forall m b ofs v ch m',
   store ch m b ofs v = Some m' -> forward m m'.
 Proof.
-  split; eauto using Mem.store_valid_block_1, Mem.perm_store_2.
+  split; eauto using store_valid_block_1, perm_store_2.
 Qed.
 
 Lemma storev_forward:
@@ -4352,7 +4352,7 @@ Lemma storebytes_forward:
   forall m b ofs bytes m',
   storebytes m b ofs bytes = Some m' -> forward m m'.
 Proof.
-  split; eauto using Mem.storebytes_valid_block_1, Mem.perm_storebytes_2.
+  split; eauto using storebytes_valid_block_1, perm_storebytes_2.
 Qed.
 
 Lemma alloc_forward:
@@ -4360,16 +4360,16 @@ Lemma alloc_forward:
   alloc m lo hi = (m',b) -> forward m m'.
 Proof.
   split; intros.
-  { eauto using Mem.valid_block_alloc. }
-  eapply Mem.perm_alloc_4; eauto.
-  intros ->; eapply Mem.fresh_block_alloc; eauto.
+  { eauto using valid_block_alloc. }
+  eapply perm_alloc_4; eauto.
+  intros ->; eapply fresh_block_alloc; eauto.
 Qed.
 
 Lemma free_forward:
   forall b z0 z m m',
   free m b z0 z = Some m' -> forward m m'.
 Proof.
-  split; eauto using Mem.valid_block_free_1, Mem.perm_free_3. 
+  split; eauto using valid_block_free_1, perm_free_3. 
 Qed.
 
 Lemma free_list_forward:
@@ -4384,7 +4384,7 @@ Qed.
 
 Lemma forward_nextblock:
   forall m m',
-  forward m m' -> (Mem.nextblock m <= Mem.nextblock m')%positive.
+  forward m m' -> (nextblock m <= nextblock m')%positive.
 Proof.
   intros. apply Pos.le_nlt; intros ?.
   now apply (Pos.lt_irrefl (nextblock m')), H.

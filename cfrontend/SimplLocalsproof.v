@@ -342,7 +342,7 @@ Inductive val_casted_list: list val -> typelist -> Prop :=
 Lemma val_casted_list_params:
   forall params vl,
   val_casted_list vl (type_of_params params) ->
-  list_forall2 val_casted vl (map snd params).
+  Forall2 val_casted vl (map snd params).
 Proof.
   induction params; simpl; intros. 
   inv H. constructor.
@@ -1091,8 +1091,8 @@ Theorem store_params_correct:
   bind_parameters e m params args m' ->
   forall s tm tle1 tle2 targs,
   list_norepet (var_names params) ->
-  list_forall2 val_casted args (map snd params) ->
-  val_list_inject j args targs ->
+  Forall2 val_casted args (map snd params) ->
+  Forall2 (val_inject j) args targs ->
   match_envs j cenv e le m lo hi te tle1 tlo thi ->
   Mem.inject j m tm ->
   (forall id, ~In id (var_names params) -> tle2!id = tle1!id) ->
@@ -1114,7 +1114,7 @@ Proof.
   exploit me_vars; eauto. instantiate (1 := id); intros MV.
   destruct (VSet.mem id cenv) eqn:?.
   (* lifted to temp *)
-  eapply IHbind_parameters with (tle1 := PTree.set id v' tle1); eauto.
+  eapply IHbind_parameters with (tle1 := PTree.set id y tle1); eauto.
   eapply match_envs_assign_lifted; eauto. 
   inv MV; try congruence. rewrite ENV in H; inv H.
   inv H0; try congruence.
@@ -1126,12 +1126,12 @@ Proof.
   exploit assign_loc_inject; eauto. 
   intros [tm1 [A [B C]]].
   exploit IHbind_parameters. eauto. eauto. eauto.
-  instantiate (1 := PTree.set id v' tle1).
+  instantiate (1 := PTree.set id y tle1).
   apply match_envs_change_temp.  
   eapply match_envs_invariant; eauto.
   apply LE; auto. auto.
   eauto.
-  instantiate (1 := PTree.set id v' tle2). 
+  instantiate (1 := PTree.set id y tle2). 
   intros. repeat rewrite PTree.gsspec. destruct (peq id0 id). auto.
   apply TLE. intuition.
   intros. apply LE. auto.
@@ -1144,7 +1144,7 @@ Proof.
     eapply eval_Evar_local. eauto. 
     eapply eval_Etempvar. erewrite bind_parameter_temps_inv; eauto.
     apply PTree.gss. 
-    simpl. instantiate (1 := v'). apply cast_val_casted.
+    simpl. instantiate (1 := y). apply cast_val_casted.
     eapply val_casted_inject with (v := v1); eauto.
     simpl. eexact A. 
   apply star_one. constructor.
@@ -1494,7 +1494,7 @@ Lemma eval_simpl_exprlist:
   val_casted_list vl tyl /\
   exists tvl,
      eval_exprlist tge te tle tm (simpl_exprlist cenv al) tyl tvl
-  /\ val_list_inject f vl tvl.
+  /\ Forall2 (val_inject f) vl tvl.
 Proof.
   induction 1; simpl; intros.
   split. constructor. econstructor; split. constructor. auto.
@@ -1743,7 +1743,7 @@ Inductive match_states: state * mem -> state * mem -> Prop :=
         (TRFD: transf_fundef fd = OK tfd)
         (MCONT: forall cenv, match_cont j cenv k tk m (Mem.nextblock m) (Mem.nextblock tm))
         (MINJ: Mem.inject j m tm)
-        (AINJ: val_list_inject j vargs tvargs)
+        (AINJ: Forall2 (val_inject j) vargs tvargs)
         (FUNTY: type_of_fundef fd = Tfunction targs tres cconv)
         (ANORM: val_casted_list vargs targs),
       match_states (Callstate fd vargs k, m)

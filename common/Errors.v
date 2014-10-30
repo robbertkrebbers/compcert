@@ -115,7 +115,7 @@ Fixpoint mmap (A B: Type) (f: A -> res B) (l: list A) {struct l} : res (list B) 
 Remark mmap_inversion:
   forall (A B: Type) (f: A -> res B) (l: list A) (l': list B),
   mmap f l = OK l' ->
-  list_forall2 (fun x y => f x = OK y) l l'.
+  Forall2 (fun x y => f x = OK y) l l'.
 Proof.
   induction l; simpl; intros.
   inversion_clear H. constructor.

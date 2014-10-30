@@ -118,7 +118,7 @@ Record match_env
       (forall id v,
          e!id = Some v -> exists r, map.(map_vars)!id = Some r /\ Val.lessdef v rs#r);
     me_letvars:
-      Val.lessdef_list le rs##(map.(map_letvars))
+      Forall2 Val.lessdef le rs##(map.(map_letvars))
   }.
 
 Lemma match_env_find_var:
@@ -142,9 +142,9 @@ Proof.
   intros. exploit me_letvars; eauto.
   clear H. revert le H0 H1. generalize (map_letvars map). clear map.
   induction idx; simpl; intros.
-  inversion H; subst le; inversion H0. subst v1.
+  inversion H; subst le; inversion H0. subst x.
   destruct l; inversion H1. subst r0.
-  inversion H2. subst v2. auto.
+  inversion H2. subst y. auto.
   destruct l; destruct le; try discriminate.
   eapply IHidx; eauto.
   inversion H. auto.
@@ -259,7 +259,7 @@ Qed.
 Lemma match_set_params_init_regs:
   forall il rl s1 map2 s2 vl tvl i,
   add_vars init_mapping il s1 = OK (rl, map2) s2 i ->
-  Val.lessdef_list vl tvl ->
+  Forall2 Val.lessdef vl tvl ->
   match_env map2 (set_params vl il) nil (init_regs tvl rl)
   /\ (forall r, reg_fresh r s2 -> (init_regs tvl rl)#r = Vundef).
 Proof.
@@ -329,7 +329,7 @@ Lemma match_init_env_init_reg:
   forall params s0 rparams map1 s1 i1 vars rvars map2 s2 i2 vparams tvparams,
   add_vars init_mapping params s0 = OK (rparams, map1) s1 i1 ->
   add_vars map1 vars s1 = OK (rvars, map2) s2 i2 ->
-  Val.lessdef_list vparams tvparams ->
+  Forall2 Val.lessdef vparams tvparams ->
   match_env map2 (set_locals vars (set_params vparams params))
             nil (init_regs tvparams rparams).
 Proof.
@@ -477,7 +477,7 @@ Definition transl_exprlist_prop
   exists rs', exists tm',
      star (step tge) (State cs f sp ns rs, tm) E0 (State cs f sp nd rs', tm')
   /\ match_env map e le rs'
-  /\ Val.lessdef_list vl rs'##rl
+  /\ Forall2 Val.lessdef vl rs'##rl
   /\ (forall r, In r pr -> rs'#r = rs#r)
   /\ Mem.extends m tm'.
 
@@ -1101,7 +1101,7 @@ Inductive match_states: CminorSel.state * mem -> RTL.state * mem -> Prop :=
       forall f args targs k m tm cs tf
         (TF: transl_fundef f = OK tf)
         (MS: match_stacks k cs)
-        (LD: Val.lessdef_list args targs)
+        (LD: Forall2 Val.lessdef args targs)
         (MEXT: Mem.extends m tm),
       match_states (CminorSel.Callstate f args k, m)
                    (RTL.Callstate cs tf targs, tm)
@@ -1211,7 +1211,7 @@ Proof.
   intros [rs' [tm' [A [B [C [D E]]]]]].
   exploit transl_expr_correct; eauto.
   intros [rs'' [tm'' [F [G [J [K L]]]]]].
-  assert (Val.lessdef_list vl rs''##rl).
+  assert (Forall2 Val.lessdef vl rs''##rl).
     replace (rs'' ## rl) with (rs' ## rl). auto.
     apply list_map_exten. intros. apply K. auto.
   edestruct eval_addressing_lessdef as [vaddr' []]; eauto.

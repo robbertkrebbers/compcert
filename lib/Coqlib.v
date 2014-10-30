@@ -1151,54 +1151,6 @@ Proof.
   induction 1; intros. auto. apply IHis_tail. eapply is_tail_cons_left; eauto.
 Qed.
 
-(** [list_forall2 P [x1 ... xN] [y1 ... yM]] holds iff [N = M] and
-  [P xi yi] holds for all [i]. *)
-
-Section FORALL2.
-
-Variable A: Type.
-Variable B: Type.
-Variable P: A -> B -> Prop.
-
-Inductive list_forall2: list A -> list B -> Prop :=
-  | list_forall2_nil:
-      list_forall2 nil nil
-  | list_forall2_cons:
-      forall a1 al b1 bl,
-      P a1 b1 ->
-      list_forall2 al bl ->
-      list_forall2 (a1 :: al) (b1 :: bl).
-
-Lemma list_forall2_app:
-  forall a2 b2 a1 b1,
-  list_forall2 a1 b1 -> list_forall2 a2 b2 -> 
-  list_forall2 (a1 ++ a2) (b1 ++ b2).
-Proof.
-  induction 1; intros; simpl. auto. constructor; auto. 
-Qed.
-
-Lemma list_forall2_length:
-  forall l1 l2,
-  list_forall2 l1 l2 -> length l1 = length l2.
-Proof.
-  induction 1; simpl; congruence.
-Qed.
-
-End FORALL2.
-
-Lemma list_forall2_imply:
-  forall (A B: Type) (P1: A -> B -> Prop) (l1: list A) (l2: list B),
-  list_forall2 P1 l1 l2 ->
-  forall (P2: A -> B -> Prop),
-  (forall v1 v2, In v1 l1 -> In v2 l2 -> P1 v1 v2 -> P2 v1 v2) ->
-  list_forall2 P2 l1 l2.
-Proof.
-  induction 1; intros.
-  constructor.
-  constructor. auto with coqlib. apply IHlist_forall2; auto. 
-  intros. auto with coqlib.
-Qed.
-
 (** Dropping the first N elements of a list. *)
 
 Fixpoint list_drop (A: Type) (n: nat) (x: list A) {struct n} : list A :=
@@ -1247,6 +1199,15 @@ Lemma in_list_repeat:
   forall (A: Type) n (x: A) y, In y (list_repeat n x) -> y = x.
 Proof.
   induction n; simpl; intros. elim H. destruct H; auto.
+Qed.
+
+(** * Properties of [Forall2] *)
+
+Lemma Forall2_length:
+  forall A B (P : A -> B -> Prop) l k,
+  Forall2 P l k -> length l = length k.
+Proof.
+  induction 1; simpl; f_equal; auto.
 Qed.
 
 (** * Definitions and theorems over boolean types *)

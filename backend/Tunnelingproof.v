@@ -220,27 +220,27 @@ Inductive match_stackframes: stackframe -> stackframe -> Prop :=
 Inductive match_states: state * mem -> state * mem -> Prop :=
   | match_states_intro:
       forall s f sp pc ls m ts,
-      list_forall2 match_stackframes s ts ->
+      Forall2 match_stackframes s ts ->
       match_states (State s f sp pc ls, m)
                    (State ts (tunnel_function f) sp (branch_target f pc) ls, m)
   | match_states_block:
       forall s f sp bb ls m ts,
-      list_forall2 match_stackframes s ts ->
+      Forall2 match_stackframes s ts ->
       match_states (Block s f sp bb ls, m)
                    (Block ts (tunnel_function f) sp (tunneled_block f bb) ls, m)
   | match_states_interm:
       forall s f sp pc bb ls m ts,
-      list_forall2 match_stackframes s ts ->
+      Forall2 match_stackframes s ts ->
       match_states (Block s f sp (Lbranch pc :: bb) ls, m)
                    (State ts (tunnel_function f) sp (branch_target f pc) ls, m)
   | match_states_call:
       forall s f ls m ts,
-      list_forall2 match_stackframes s ts ->
+      Forall2 match_stackframes s ts ->
       match_states (Callstate s f ls, m)
                    (Callstate ts (tunnel_fundef f) ls, m)
   | match_states_return:
       forall s ls m ts,
-      list_forall2 match_stackframes s ts ->
+      Forall2 match_stackframes s ts ->
       match_states (Returnstate s ls, m)
                    (Returnstate ts ls, m).
 
@@ -260,7 +260,7 @@ Definition measure (st: state * mem) : nat :=
 
 Lemma match_parent_locset:
   forall s ts,
-  list_forall2 match_stackframes s ts ->
+  Forall2 match_stackframes s ts ->
   parent_locset ts = parent_locset s.
 Proof.
   induction 1; simpl. auto. inv H; auto.

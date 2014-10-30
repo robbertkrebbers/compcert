@@ -1465,13 +1465,13 @@ Proof.
 Qed.
 
 Lemma add_globals_match:
-  forall gl1 gl2, list_forall2 (match_globdef match_fun match_varinfo) gl1 gl2 ->
+  forall gl1 gl2, Forall2 (match_globdef match_fun match_varinfo) gl1 gl2 ->
   forall ge1 ge2, match_genvs nil ge1 ge2 ->
   match_genvs nil (add_globals ge1 gl1) (add_globals ge2 gl2).
 Proof.
   induction 1; intros; simpl. 
   auto.
-  apply IHlist_forall2. apply add_global_match; auto.
+  apply IHForall2. apply add_global_match; auto.
 Qed.
 
 Lemma add_global_augment_match: 
@@ -1629,15 +1629,15 @@ Proof.
 Qed.
 
 Lemma alloc_globals_match:
-  forall gl1 gl2, list_forall2 (match_globdef match_fun match_varinfo) gl1 gl2 ->
+  forall gl1 gl2, Forall2 (match_globdef match_fun match_varinfo) gl1 gl2 ->
   forall m m',
   alloc_globals (globalenv p) m gl1 = Some m' -> 
   alloc_globals (globalenv p') m gl2 = Some m'.
 Proof.
   induction 1; simpl; intros.
   auto.
-  destruct (alloc_global (globalenv p) m a1) as [m1|] eqn:?; try discriminate.
-  assert (alloc_global (globalenv p') m b1 = Some m1).
+  destruct (alloc_global (globalenv p) m x) as [m1|] eqn:?; try discriminate.
+  assert (alloc_global (globalenv p') m y = Some m1).
     inv H; simpl in *. 
     auto.
     set (sz := init_data_list_size init) in *.

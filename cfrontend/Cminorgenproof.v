@@ -1115,7 +1115,7 @@ Fixpoint set_params' (vl: list val) (il: list ident) (te: Cminor.env) : Cminor.e
 Lemma bind_parameters_agree_rec:
   forall f vars vals tvals le1 le2 te,
   bind_parameters vars vals le1 = Some le2 ->
-  val_list_inject f vals tvals ->
+  Forall2 (val_inject f) vals tvals ->
   match_temps f le1 te ->
   match_temps f le2 (set_params' tvals vars te).
 Proof.
@@ -1125,7 +1125,7 @@ Opaque PTree.set.
   destruct vals; try discriminate. inv H0.
   simpl. eapply IHvars; eauto.
   red; intros. rewrite PTree.gsspec in *. destruct (peq id a). 
-  inv H0. exists v'; auto.
+  inv H0. exists y; auto.
   apply H1; auto.
 Qed.
 
@@ -1209,7 +1209,7 @@ Qed.
 Lemma bind_parameters_agree:
   forall f params temps vals tvals le,
   bind_parameters params vals (create_undef_temps temps) = Some le ->
-  val_list_inject f vals tvals ->
+  Forall2 (val_inject f) vals tvals ->
   list_norepet params ->
   list_disjoint params temps ->
   match_temps f le (set_locals temps (set_params tvals params)).
@@ -1234,7 +1234,7 @@ Theorem match_callstack_function_entry:
   list_disjoint (Csharpminor.fn_params fn) (Csharpminor.fn_temps fn) ->
   alloc_variables Csharpminor.empty_env m (Csharpminor.fn_vars fn) e m' ->
   bind_parameters (Csharpminor.fn_params fn) args (create_undef_temps fn.(fn_temps)) = Some le ->
-  val_list_inject f args targs ->
+  Forall2 (val_inject f) args targs ->
   Mem.alloc tm 0 tf.(fn_stackspace) = (tm', sp) ->
   match_callstack f m tm cs (Mem.nextblock m) (Mem.nextblock tm) ->
   Mem.inject f m tm ->
@@ -1539,7 +1539,7 @@ Lemma transl_exprlist_correct:
     (TR: transl_exprlist cenv a = OK ta),
   exists tv,
      eval_exprlist tge (Vptr sp Int.zero) te tm ta tv
-  /\ val_list_inject f v tv.
+  /\ Forall2 (val_inject f) v tv.
 Proof.
   induction 3; intros; monadInv TR.
   exists (@nil val); split. constructor. constructor.
@@ -1606,7 +1606,7 @@ Inductive match_states: Csharpminor.state * mem -> Cminor.state * mem -> Prop :=
       (MCS: match_callstack f m tm cs (Mem.nextblock m) (Mem.nextblock tm))
       (MK: match_cont k tk cenv nil cs)
       (ISCC: Csharpminor.is_call_cont k)
-      (ARGSINJ: val_list_inject f args targs),
+      (ARGSINJ: Forall2 (val_inject f) args targs),
       match_states (Csharpminor.Callstate fd args k, m)
                    (Callstate tfd targs tk, tm)
   | match_returnstate:

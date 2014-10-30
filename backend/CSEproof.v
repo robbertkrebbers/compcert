@@ -855,7 +855,7 @@ Definition regs_lessdef (rs1 rs2: regset) : Prop :=
 
 Lemma regs_lessdef_regs:
   forall rs1 rs2, regs_lessdef rs1 rs2 ->
-  forall rl, Val.lessdef_list rs1##rl rs2##rl.
+  forall rl, Forall2 Val.lessdef rs1##rl rs2##rl.
 Proof.
   induction rl; constructor; auto.
 Qed.
@@ -870,7 +870,7 @@ Qed.
 
 Lemma init_regs_lessdef:
   forall rl vl1 vl2,
-  Val.lessdef_list vl1 vl2 ->
+  Forall2 Val.lessdef vl1 vl2 ->
   regs_lessdef (init_regs vl1 rl) (init_regs vl2 rl).
 Proof.
   induction rl; simpl; intros.
@@ -937,7 +937,7 @@ Inductive match_states: state * mem -> state * mem -> Prop :=
       forall s f tf args m s' args' m',
       match_stackframes s s' ->
       transf_fundef rm f = OK tf ->
-      Val.lessdef_list args args' ->
+      Forall2 Val.lessdef args args' ->
       Mem.extends m m' ->
       match_states (Callstate s f args, m)
                    (Callstate s' tf args', m')

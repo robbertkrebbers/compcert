@@ -414,7 +414,7 @@ Lemma add_equations_lessdef:
   forall rs ls rl ml e e',
   add_equations rl ml e = Some e' ->
   satisf rs ls e' ->
-  Val.lessdef_list (rs##rl) (reglist ls ml).
+  Forall2 Val.lessdef (rs##rl) (reglist ls ml).
 Proof.
   induction rl; destruct ml; simpl; intros; MonadInv.
   constructor.
@@ -452,7 +452,7 @@ Lemma add_equations_args_lessdef:
   add_equations_args rl tyl ll e = Some e' ->
   satisf rs ls e' ->
   Val.has_type_list (rs##rl) tyl ->
-  Val.lessdef_list (rs##rl) (decode_longs tyl (map ls ll)).
+  Forall2 Val.lessdef (rs##rl) (decode_longs tyl (map ls ll)).
 Proof.
   intros until e'. functional induction (add_equations_args rl tyl ll e); simpl; intros.
 - inv H; auto.
@@ -1103,7 +1103,7 @@ Lemma transfer_use_def_satisf:
   forall args res args' res' und e e' rs ls,
   transfer_use_def args res args' res' und e = Some e' ->
   satisf rs ls e' ->
-  Val.lessdef_list rs##args (reglist ls args') /\
+  Forall2 Val.lessdef rs##args (reglist ls args') /\
   (forall v v', Val.lessdef v v' ->
     satisf (rs#res <- v) (Locmap.set (R res') v' (undef_regs und ls)) e).
 Proof.
@@ -1118,7 +1118,7 @@ Lemma add_equations_res_lessdef:
   forall r oty ll e e' rs ls,
   add_equations_res r oty ll e = Some e' ->
   satisf rs ls e' ->
-  Val.lessdef_list (encode_long oty rs#r) (map ls ll).
+  Forall2 Val.lessdef (encode_long oty rs#r) (map ls ll).
 Proof.
   intros. functional inversion H.
 - subst. simpl. constructor. 
@@ -1176,7 +1176,7 @@ Lemma function_return_satisf:
   satisf rs ls_before e' ->
   forallb (fun l => reg_loc_unconstrained res l e') res' = true ->
   no_caller_saves e' = true ->
-  Val.lessdef_list (encode_long (sig_res sg) v) (map ls_after res') ->
+  Forall2 Val.lessdef (encode_long (sig_res sg) v) (map ls_after res') ->
   agree_callee_save ls_before ls_after ->
   satisf (rs#res <- v) ls_after e.
 Proof.
@@ -1263,7 +1263,7 @@ Lemma compat_entry_satisf:
   forall rl tyl ll e,
   compat_entry rl tyl ll e = true ->
   forall vl ls,
-  Val.lessdef_list vl (decode_longs tyl (map ls ll)) ->
+  Forall2 Val.lessdef vl (decode_longs tyl (map ls ll)) ->
   satisf (init_regs vl rl) ls e.
 Proof.
   intros until e. functional induction (compat_entry rl tyl ll e); intros. 
@@ -1556,7 +1556,7 @@ Inductive match_stackframes: list RTL.stackframe -> list LTL.stackframe -> signa
         (WTRS: wt_regset env rs)
         (WTRES: env res = proj_sig_res sg)
         (STEPS: forall v ls1 m,
-           Val.lessdef_list (encode_long (sig_res sg) v) (map ls1 (map R (loc_result sg))) ->
+           Forall2 Val.lessdef (encode_long (sig_res sg) v) (map ls1 (map R (loc_result sg))) ->
            Val.has_type v (env res) ->
            agree_callee_save ls ls1 ->
            exists ls2,
@@ -1585,7 +1585,7 @@ Inductive match_states: RTL.state * mem -> LTL.state * mem -> Prop :=
       forall s f args m ts tf ls m'
         (STACKS: match_stackframes s ts (funsig tf))
         (FUN: transf_fundef f = OK tf)
-        (ARGS: Val.lessdef_list args (decode_longs (sig_args (funsig tf)) (map ls (loc_arguments (funsig tf)))))
+        (ARGS: Forall2 Val.lessdef args (decode_longs (sig_args (funsig tf)) (map ls (loc_arguments (funsig tf)))))
         (AG: agree_callee_save (parent_locset ts) ls)
         (MEM: Mem.extends m m')
         (WTARGS: Val.has_type_list args (sig_args (funsig tf))),
@@ -1594,7 +1594,7 @@ Inductive match_states: RTL.state * mem -> LTL.state * mem -> Prop :=
   | match_states_return:
       forall s res m ts ls m' sg
         (STACKS: match_stackframes s ts sg)
-        (RES: Val.lessdef_list (encode_long (sig_res sg) res) (map ls (map R (loc_result sg))))
+        (RES: Forall2 Val.lessdef (encode_long (sig_res sg) res) (map ls (map R (loc_result sg))))
         (AG: agree_callee_save (parent_locset ts) ls)
         (MEM: Mem.extends m m')
         (WTRES: Val.has_type res (proj_sig_res sg)),
@@ -1762,7 +1762,7 @@ Proof.
   set (v2' := if Archi.big_endian then v2 else v1) in *.
   set (v1' := if Archi.big_endian then v1 else v2) in *.
   exploit (exec_moves mv1); eauto. intros [ls1 [A1 B1]]. 
-  assert (LD1: Val.lessdef_list rs##args (reglist ls1 args1')).
+  assert (LD1: Forall2 Val.lessdef rs##args (reglist ls1 args1')).
   { eapply add_equations_lessdef; eauto. }
   exploit eval_addressing_lessdef. eexact LD1. eauto. intros [a1' [F1 G1]].
   exploit Mem.loadv_extends. eauto. eexact LOAD1. eexact G1. intros (v1'' & LOAD1' & LD2).
@@ -1774,7 +1774,7 @@ Proof.
     rewrite Regmap.gss. apply Val.lessdef_trans with v1'; auto. 
   }
   exploit (exec_moves mv2); eauto. intros [ls3 [A3 B3]]. 
-  assert (LD3: Val.lessdef_list rs##args (reglist ls3 args2')).
+  assert (LD3: Forall2 Val.lessdef rs##args (reglist ls3 args2')).
   { replace (rs##args) with ((rs#dst<-v)##args). 
     eapply add_equations_lessdef; eauto. 
     apply list_map_exten; intros. rewrite Regmap.gso; auto.
@@ -1812,7 +1812,7 @@ Proof.
   set (v2' := if Archi.big_endian then v2 else v1) in *.
   set (v1' := if Archi.big_endian then v1 else v2) in *.
   exploit (exec_moves mv1); eauto. intros [ls1 [A1 B1]]. 
-  assert (LD1: Val.lessdef_list rs##args (reglist ls1 args')).
+  assert (LD1: Forall2 Val.lessdef rs##args (reglist ls1 args')).
   { eapply add_equations_lessdef; eauto. }
   exploit eval_addressing_lessdef. eexact LD1. eauto. intros [a1' [F1 G1]].
   exploit Mem.loadv_extends. eauto. eexact LOAD1. eexact G1. intros (v1'' & LOAD1' & LD2).
@@ -1841,7 +1841,7 @@ Proof.
   set (v2' := if Archi.big_endian then v2 else v1) in *.
   set (v1' := if Archi.big_endian then v1 else v2) in *.
   exploit (exec_moves mv1); eauto. intros [ls1 [A1 B1]]. 
-  assert (LD1: Val.lessdef_list rs##args (reglist ls1 args')).
+  assert (LD1: Forall2 Val.lessdef rs##args (reglist ls1 args')).
   { eapply add_equations_lessdef; eauto. }
   exploit eval_addressing_lessdef. eexact LD1.
   eapply eval_offset_addressing; eauto. intros [a1' [F1 G1]].

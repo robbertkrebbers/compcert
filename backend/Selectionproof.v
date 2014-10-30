@@ -494,7 +494,7 @@ Qed.
 
 Lemma set_params_lessdef:
   forall il vl1 vl2, 
-  Val.lessdef_list vl1 vl2 ->
+  Forall2 Val.lessdef vl1 vl2 ->
   env_lessdef (set_params vl1 il) (set_params vl2 il).
 Proof.
   induction il; simpl; intros.
@@ -553,7 +553,7 @@ Lemma sel_exprlist_correct:
   Cminor.eval_exprlist ge sp e m a v ->
   forall e' le m',
   env_lessdef e e' -> Mem.extends m m' ->
-  exists v', eval_exprlist tge sp e' m' le (sel_exprlist a) v' /\ Val.lessdef_list v v'.
+  exists v', eval_exprlist tge sp e' m' le (sel_exprlist a) v' /\ Forall2 Val.lessdef v v'.
 Proof.
   induction 1; intros; simpl. 
   exists (@nil val); split; auto. constructor.
@@ -592,7 +592,7 @@ Inductive match_states: Cminor.state * mem -> CminorSel.state * mem -> Prop :=
   | match_callstate: forall f f' args args' k k' m m'
         (TF: sel_fundef f = OK f')
         (MC: match_cont k k')
-        (LD: Val.lessdef_list args args')
+        (LD: Forall2 Val.lessdef args args')
         (ME: Mem.extends m m'),
       match_states
         (Cminor.Callstate f args k, m)

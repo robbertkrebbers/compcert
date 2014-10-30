@@ -86,13 +86,13 @@ Inductive vagree_list: list val -> list val -> list nval -> Prop :=
       vagree_list (v1 :: vl1) (v2 :: vl2) (nv1 :: nvl).
 
 Lemma lessdef_vagree_list:
-  forall vl1 vl2, vagree_list vl1 vl2 nil -> Val.lessdef_list vl1 vl2.
+  forall vl1 vl2, vagree_list vl1 vl2 nil -> Forall2 Val.lessdef vl1 vl2.
 Proof.
   induction vl1; intros; inv H; constructor; auto with na.
 Qed.
 
 Lemma vagree_lessdef_list:
-  forall vl1 vl2, Val.lessdef_list vl1 vl2 -> forall nvl, vagree_list vl1 vl2 nvl.
+  forall vl1 vl2, Forall2 Val.lessdef vl1 vl2 -> forall nvl, vagree_list vl1 vl2 nvl.
 Proof.
   induction 1; intros.
   constructor.
@@ -706,10 +706,10 @@ Definition store_argument (chunk: memory_chunk) :=
 Lemma store_argument_sound:
   forall chunk v w,
   vagree v w (store_argument chunk) ->
-  list_forall2 memval_lessdef (encode_val chunk v) (encode_val chunk w).
+  Forall2 memval_lessdef (encode_val chunk v) (encode_val chunk w).
 Proof.
   intros.
-  assert (UNDEF: list_forall2 memval_lessdef
+  assert (UNDEF: Forall2 memval_lessdef
                      (list_repeat (size_chunk_nat chunk) Undef)
                      (encode_val chunk w)).
   {
@@ -718,7 +718,7 @@ Proof.
   }
   assert (SAME: forall vl1 vl2,
                 vl1 = vl2 ->
-                list_forall2 memval_lessdef vl1 vl2).
+                Forall2 memval_lessdef vl1 vl2).
   {
      intros. subst vl2. revert vl1. induction vl1; constructor; auto. 
      apply memval_lessdef_refl. 
@@ -856,7 +856,7 @@ Lemma default_needs_of_operation_sound:
 Proof.
   intros. assert (default nv = All) by (destruct nv; simpl; congruence). 
   rewrite H2 in H0.
-  assert (Val.lessdef_list args1 args2).
+  assert (Forall2 Val.lessdef args1 args2).
   {
     destruct H0. auto with na. 
     destruct H0. inv H0; constructor; auto with na. 
@@ -1458,4 +1458,3 @@ Module NA <: SEMILATTICE.
   Qed.
 
 End NA.
-

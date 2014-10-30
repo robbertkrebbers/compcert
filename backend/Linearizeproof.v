@@ -500,7 +500,7 @@ Inductive match_stackframes: LTL.stackframe -> Linear.stackframe -> Prop :=
 Inductive match_states: LTL.state * mem -> Linear.state * mem -> Prop :=
   | match_states_add_branch:
       forall s f sp pc ls m tf ts c
-        (STACKS: list_forall2 match_stackframes s ts)
+        (STACKS: Forall2 match_stackframes s ts)
         (TRF: transf_function f = OK tf)
         (REACH: (reachable f)!!pc = true)
         (TAIL: is_tail c tf.(fn_code)),
@@ -508,7 +508,7 @@ Inductive match_states: LTL.state * mem -> Linear.state * mem -> Prop :=
                    (Linear.State ts tf sp (add_branch pc c) ls, m)
   | match_states_cond_taken:
       forall s f sp pc ls m tf ts cond args c
-        (STACKS: list_forall2 match_stackframes s ts)
+        (STACKS: Forall2 match_stackframes s ts)
         (TRF: transf_function f = OK tf)
         (REACH: (reachable f)!!pc = true)
         (JUMP: eval_condition cond (reglist ls args) m = Some true),
@@ -516,7 +516,7 @@ Inductive match_states: LTL.state * mem -> Linear.state * mem -> Prop :=
                    (Linear.State ts tf sp (Lcond cond args pc :: c) ls, m)
   | match_states_jumptable:
       forall s f sp pc ls m tf ts arg tbl c n
-        (STACKS: list_forall2 match_stackframes s ts)
+        (STACKS: Forall2 match_stackframes s ts)
         (TRF: transf_function f = OK tf)
         (REACH: (reachable f)!!pc = true)
         (ARG: ls (R arg) = Vint n)
@@ -525,7 +525,7 @@ Inductive match_states: LTL.state * mem -> Linear.state * mem -> Prop :=
                    (Linear.State ts tf sp (Ljumptable arg tbl :: c) ls, m)
   | match_states_block:
       forall s f sp bb ls m tf ts c
-        (STACKS: list_forall2 match_stackframes s ts)
+        (STACKS: Forall2 match_stackframes s ts)
         (TRF: transf_function f = OK tf)
         (REACH: forall pc, In pc (successors_block bb) -> (reachable f)!!pc = true)
         (TAIL: is_tail c tf.(fn_code)),
@@ -533,13 +533,13 @@ Inductive match_states: LTL.state * mem -> Linear.state * mem -> Prop :=
                    (Linear.State ts tf sp (linearize_block bb c) ls, m)
   | match_states_call:
       forall s f ls m tf ts,
-      list_forall2 match_stackframes s ts ->
+      Forall2 match_stackframes s ts ->
       transf_fundef f = OK tf ->
       match_states (LTL.Callstate s f ls, m)
                    (Linear.Callstate ts tf ls, m)
   | match_states_return:
       forall s ls m ts,
-      list_forall2 match_stackframes s ts ->
+      Forall2 match_stackframes s ts ->
       match_states (LTL.Returnstate s ls, m)
                    (Linear.Returnstate ts ls, m).
 
@@ -551,7 +551,7 @@ Definition measure (S: LTL.state * mem) : nat :=
   end.
 
 Remark match_parent_locset:
-  forall s ts, list_forall2 match_stackframes s ts -> parent_locset ts = LTL.parent_locset s.
+  forall s ts, Forall2 match_stackframes s ts -> parent_locset ts = LTL.parent_locset s.
 Proof.
   induction 1; simpl. auto. inv H; auto. 
 Qed.

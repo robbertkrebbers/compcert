@@ -174,7 +174,7 @@ Qed.
 
 Lemma preg_vals:
   forall ms sp rs, agree ms sp rs ->
-  forall l, Val.lessdef_list (map ms l) (map rs (map preg_of l)).
+  forall l, Forall2 Val.lessdef (map ms l) (map rs (map preg_of l)).
 Proof.
   induction l; simpl. constructor. constructor. eapply preg_val; eauto. auto.
 Qed.
@@ -250,7 +250,7 @@ Qed.
 Lemma agree_set_mregs:
   forall sp rl vl vl' ms rs,
   agree ms sp rs ->
-  Val.lessdef_list vl vl' ->
+  Forall2 Val.lessdef vl vl' ->
   agree (Mach.set_regs rl vl ms) sp (set_regs (map preg_of rl) vl' rs).
 Proof.
   induction rl; simpl; intros. 
@@ -336,13 +336,13 @@ Qed.
 Lemma extcall_args_match:
   forall ms sp rs m m', agree ms sp rs -> Mem.extends m m' ->
   forall ll vl,
-  list_forall2 (Mach.extcall_arg ms m sp) ll vl ->
-  exists vl', list_forall2 (Asm.extcall_arg rs m') ll vl' /\ Val.lessdef_list vl vl'.
+  Forall2 (Mach.extcall_arg ms m sp) ll vl ->
+  exists vl', Forall2 (Asm.extcall_arg rs m') ll vl' /\ Forall2 Val.lessdef vl vl'.
 Proof.
   induction 3; intros. 
   exists (@nil val); split. constructor. constructor.
   exploit extcall_arg_match; eauto. intros [v1' [A B]].
-  destruct IHlist_forall2 as [vl' [C D]].
+  destruct IHForall2 as [vl' [C D]].
   exists (v1' :: vl'); split; constructor; auto.
 Qed.
 
@@ -350,7 +350,7 @@ Lemma extcall_arguments_match:
   forall ms m m' sp rs sg args,
   agree ms sp rs -> Mem.extends m m' ->
   Mach.extcall_arguments ms m sp sg args ->
-  exists args', Asm.extcall_arguments rs m' sg args' /\ Val.lessdef_list args args'.
+  exists args', Asm.extcall_arguments rs m' sg args' /\ Forall2 Val.lessdef args args'.
 Proof.
   unfold Mach.extcall_arguments, Asm.extcall_arguments; intros.
   eapply extcall_args_match; eauto.
@@ -379,12 +379,12 @@ Lemma annot_arguments_match:
   forall pl vl,
   Mach.annot_arguments ms m sp pl vl ->
   exists vl', Asm.annot_arguments rs m' (map transl_annot_param pl) vl'
-           /\ Val.lessdef_list vl vl'.
+           /\ Forall2 Val.lessdef vl vl'.
 Proof.
   induction 3; intros. 
   exists (@nil val); split. constructor. constructor.
   exploit annot_arg_match; eauto. intros [v1' [A B]].
-  destruct IHlist_forall2 as [vl' [C D]].
+  destruct IHForall2 as [vl' [C D]].
   exists (v1' :: vl'); split; constructor; auto.
 Qed.
 

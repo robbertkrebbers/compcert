@@ -671,16 +671,16 @@ Ltac InvInject :=
       inv H; InvInject
   | [ H: val_inject _ (Vptr _ _) _ |- _ ] =>
       inv H; InvInject
-  | [ H: val_list_inject _ nil _ |- _ ] =>
+  | [ H: Forall2 (val_inject _) nil _ |- _ ] =>
       inv H; InvInject
-  | [ H: val_list_inject _ (_ :: _) _ |- _ ] =>
+  | [ H: Forall2 (val_inject _) (_ :: _) _ |- _ ] =>
       inv H; InvInject
   | _ => idtac
   end.
 
 Lemma eval_condition_inj:
   forall cond vl1 vl2 b,
-  val_list_inject f vl1 vl2 ->
+  Forall2 (val_inject f) vl1 vl2 ->
   eval_condition cond vl1 m1 = Some b ->
   eval_condition cond vl2 m2 = Some b.
 Proof.
@@ -705,7 +705,7 @@ Ltac TrivialExists :=
 Lemma eval_operation_inj:
   forall op sp1 vl1 sp2 vl2 v1,
   val_inject f sp1 sp2 ->
-  val_list_inject f vl1 vl2 ->
+  Forall2 (val_inject f) vl1 vl2 ->
   eval_operation genv sp1 op vl1 m1 = Some v1 ->
   exists v2, eval_operation genv sp2 op vl2 m2 = Some v2 /\ val_inject f v1 v2.
 Proof.
@@ -778,7 +778,7 @@ Qed.
 Lemma eval_addressing_inj:
   forall addr sp1 vl1 sp2 vl2 v1,
   val_inject f sp1 sp2 ->
-  val_list_inject f vl1 vl2 ->
+  Forall2 (val_inject f) vl1 vl2 ->
   eval_addressing genv sp1 addr vl1 = Some v1 ->
   exists v2, eval_addressing genv sp2 addr vl2 = Some v2 /\ val_inject f v1 v2.
 Proof.
@@ -839,7 +839,7 @@ Qed.
 
 Lemma eval_condition_lessdef:
   forall cond vl1 vl2 b m1 m2,
-  Val.lessdef_list vl1 vl2 ->
+  Forall2 Val.lessdef vl1 vl2 ->
   Mem.extends m1 m2 ->
   eval_condition cond vl1 m1 = Some b ->
   eval_condition cond vl2 m2 = Some b.
@@ -854,7 +854,7 @@ Qed.
 
 Lemma eval_operation_lessdef:
   forall sp op vl1 vl2 v1 m1 m2,
-  Val.lessdef_list vl1 vl2 ->
+  Forall2 Val.lessdef vl1 vl2 ->
   Mem.extends m1 m2 ->
   eval_operation genv sp op vl1 m1 = Some v1 ->
   exists v2, eval_operation genv sp op vl2 m2 = Some v2 /\ Val.lessdef v1 v2.
@@ -876,7 +876,7 @@ Qed.
 
 Lemma eval_addressing_lessdef:
   forall sp addr vl1 vl2 v1,
-  Val.lessdef_list vl1 vl2 ->
+  Forall2 Val.lessdef vl1 vl2 ->
   eval_addressing genv sp addr vl1 = Some v1 ->
   exists v2, eval_addressing genv sp addr vl2 = Some v2 /\ Val.lessdef v1 v2.
 Proof.
@@ -916,7 +916,7 @@ Qed.
 
 Lemma eval_condition_inject:
   forall cond vl1 vl2 b m1 m2,
-  val_list_inject f vl1 vl2 ->
+  Forall2 (val_inject f) vl1 vl2 ->
   Mem.inject f m1 m2 ->
   eval_condition cond vl1 m1 = Some b ->
   eval_condition cond vl2 m2 = Some b.
@@ -930,7 +930,7 @@ Qed.
 
 Lemma eval_addressing_inject:
   forall addr vl1 vl2 v1,
-  val_list_inject f vl1 vl2 ->
+  Forall2 (val_inject f) vl1 vl2 ->
   eval_addressing genv (Vptr sp1 Int.zero) addr vl1 = Some v1 ->
   exists v2, 
      eval_addressing genv (Vptr sp2 Int.zero) (shift_stack_addressing (Int.repr delta) addr) vl2 = Some v2
@@ -944,7 +944,7 @@ Qed.
 
 Lemma eval_operation_inject:
   forall op vl1 vl2 v1 m1 m2,
-  val_list_inject f vl1 vl2 ->
+  Forall2 (val_inject f) vl1 vl2 ->
   Mem.inject f m1 m2 ->
   eval_operation genv (Vptr sp1 Int.zero) op vl1 m1 = Some v1 ->
   exists v2,

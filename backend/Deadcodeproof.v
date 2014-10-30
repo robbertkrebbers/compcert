@@ -94,11 +94,11 @@ Lemma magree_loadbytes:
   magree m1 m2 P ->
   Mem.loadbytes m1 b ofs n = Some bytes ->
   (forall i, ofs <= i < ofs + n -> P b i) ->
-  exists bytes', Mem.loadbytes m2 b ofs n = Some bytes' /\ list_forall2 memval_lessdef bytes bytes'.
+  exists bytes', Mem.loadbytes m2 b ofs n = Some bytes' /\ Forall2 memval_lessdef bytes bytes'.
 Proof.
   assert (GETN: forall c1 c2 n ofs,
     (forall i, ofs <= i < ofs + Z.of_nat n -> memval_lessdef (ZMap.get i c1) (ZMap.get i c2)) ->
-    list_forall2 memval_lessdef (Mem.getN n ofs c1) (Mem.getN n ofs c2)).
+    Forall2 memval_lessdef (Mem.getN n ofs c1) (Mem.getN n ofs c2)).
   {
     induction n; intros; simpl. 
     constructor.
@@ -138,11 +138,11 @@ Lemma magree_storebytes_parallel:
   (forall b' i, Q b' i ->
                 b' <> b \/ i < ofs \/ ofs + Z_of_nat (length bytes1) <= i ->
                 P b' i) ->
-  list_forall2 memval_lessdef bytes1 bytes2 ->
+  Forall2 memval_lessdef bytes1 bytes2 ->
   exists m2', Mem.storebytes m2 b ofs bytes2 = Some m2' /\ magree m1' m2' Q.
 Proof.
   assert (SETN: forall (access: Z -> Prop) bytes1 bytes2,
-    list_forall2 memval_lessdef bytes1 bytes2 ->
+    Forall2 memval_lessdef bytes1 bytes2 ->
     forall p c1 c2,
     (forall i, access i -> i < p \/ p + Z.of_nat (length bytes1) <= i -> memval_lessdef (ZMap.get i c1) (ZMap.get i c2)) ->
     forall q, access q ->
@@ -152,13 +152,13 @@ Proof.
     induction 1; intros; simpl.
   - apply H; auto. simpl. omega.
   - simpl length in H1; rewrite inj_S in H1. 
-    apply IHlist_forall2; auto. 
+    apply IHForall2; auto. 
     intros. rewrite ! ZMap.gsspec. destruct (ZIndexed.eq i p). auto. 
     apply H1; auto. unfold ZIndexed.t in *; omega. 
   }
   intros. 
   destruct (Mem.range_perm_storebytes m2 b ofs bytes2) as [m2' ST2].
-  { erewrite <- list_forall2_length by eauto. red; intros.
+  { erewrite <-Forall2_length by eauto. red; intros.
     eapply ma_perm; eauto. 
     eapply Mem.storebytes_range_perm; eauto. }
   exists m2'; split; auto. 
@@ -308,7 +308,7 @@ Qed.
 
 Lemma add_needs_all_lessdef:
   forall rl e e' ne,
-  eagree e e' (add_needs_all rl ne) -> Val.lessdef_list e##rl e'##rl.
+  eagree e e' (add_needs_all rl ne) -> Forall2 Val.lessdef e##rl e'##rl.
 Proof.
   induction rl; simpl; intros. 
   constructor.
@@ -352,7 +352,7 @@ Hint Resolve add_need_all_eagree add_need_all_lessdef
 
 Lemma eagree_init_regs:
   forall rl vl1 vl2 ne,
-  Val.lessdef_list vl1 vl2 ->  
+  Forall2 Val.lessdef vl1 vl2 ->  
   eagree (init_regs vl1 rl) (init_regs vl2 rl) ne.
 Proof.
   induction rl; intros until ne; intros LD; simpl.
@@ -484,7 +484,7 @@ Inductive match_stackframes: stackframe -> stackframe -> Prop :=
 Inductive match_states: state * mem -> state * mem -> Prop :=
   | match_regular_states:
       forall s f sp pc e m ts tf te tm an
-        (STACKS: list_forall2 match_stackframes s ts)
+        (STACKS: Forall2 match_stackframes s ts)
         (FUN: transf_function rm f = OK tf)
         (ANL: analyze (vanalyze rm f) f = Some an)
         (ENV: eagree e te (fst (transfer f (vanalyze rm f) pc an!!pc)))
@@ -493,15 +493,15 @@ Inductive match_states: state * mem -> state * mem -> Prop :=
                    (State ts tf (Vptr sp Int.zero) pc te, tm)
   | match_call_states:
       forall s f args m ts tf targs tm
-        (STACKS: list_forall2 match_stackframes s ts)
+        (STACKS: Forall2 match_stackframes s ts)
         (FUN: transf_fundef rm f = OK tf)
-        (ARGS: Val.lessdef_list args targs)
+        (ARGS: Forall2 Val.lessdef args targs)
         (MEM: Mem.extends m tm),
       match_states (Callstate s f args, m)
                    (Callstate ts tf targs, tm)
   | match_return_states:
       forall s v m ts tv tm
-        (STACKS: list_forall2 match_stackframes s ts)
+        (STACKS: Forall2 match_stackframes s ts)
         (RES: Val.lessdef v tv)
         (MEM: Mem.extends m tm),
       match_states (Returnstate s v, m)
@@ -522,7 +522,7 @@ Qed.
 
 Lemma match_succ_states:
   forall s f sp pc e m ts tf te tm an pc' instr ne nm
-    (STACKS: list_forall2 match_stackframes s ts)
+    (STACKS: Forall2 match_stackframes s ts)
     (FUN: transf_function rm f = OK tf)
     (ANL: analyze (vanalyze rm f) f = Some an)
     (INSTR: f.(fn_code)!pc = Some instr)

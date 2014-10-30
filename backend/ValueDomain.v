@@ -3696,7 +3696,7 @@ Proof.
 Qed.
 
 Lemma vmatch_list_inj:
-  forall bc vl xl, list_forall2 (vmatch bc) vl xl -> val_list_inject (inj_of_bc bc) vl vl.
+  forall bc vl xl, Forall2 (vmatch bc) vl xl -> Forall2 (val_inject (inj_of_bc bc)) vl vl.
 Proof.
   induction 1; constructor. eapply vmatch_inj; eauto. auto. 
 Qed. 
