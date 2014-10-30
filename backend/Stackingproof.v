@@ -2018,9 +2018,9 @@ Proof.
   intros. 
   eapply match_stacks_change_meminj; eauto. 
   eapply match_stacks_change_mem_extcall; eauto.
-  intros; eapply ec_valid_block; eauto.
-  intros; eapply ec_max_perm; eauto. red. eapply Plt_le_trans; eauto. 
-  intros; eapply ec_valid_block; eauto.
+  intros; eapply Mem.forward_valid_block; eauto using ec_forward.
+  intros; eapply Mem.forward_max_perm; eauto using ec_forward. red. eapply Plt_le_trans; eauto. 
+  intros; eapply Mem.forward_valid_block; eauto using ec_forward.
 Qed.
 
 (** Invariance with respect to change of signature *)
@@ -2692,9 +2692,9 @@ Proof.
   apply agree_frame_set_regs; auto. apply agree_frame_undef_regs; auto.
   eapply agree_frame_inject_incr; eauto. 
   apply agree_frame_extcall_invariant with m m'0; auto.
-  eapply builtin_call_valid_block'; eauto.
-  intros. inv H; eapply builtin_call_max_perm; eauto. eapply agree_valid_linear; eauto.
-  eapply builtin_call_valid_block'; eauto.
+  eapply Mem.forward_valid_block; eauto using builtin_call_forward'.
+  intros. inv H; eapply Mem.forward_max_perm; eauto using builtin_call_forward. eapply agree_valid_linear; eauto.
+  eapply Mem.forward_valid_block; eauto using builtin_call_forward'; eauto.
   eapply agree_valid_mach; eauto.
 
 - (* Lannot *)
@@ -2714,9 +2714,9 @@ Proof.
   eapply agree_regs_inject_incr; eauto.
   eapply agree_frame_inject_incr; eauto. 
   apply agree_frame_extcall_invariant with m m'0; auto.
-  eapply builtin_call_valid_block'; eauto.
-  intros. inv H; eapply builtin_call_max_perm; eauto. eapply agree_valid_linear; eauto.
-  eapply builtin_call_valid_block'; eauto.
+  eapply Mem.forward_valid_block; eauto using builtin_call_forward'.
+  intros. inv H; eapply Mem.forward_max_perm; eauto using builtin_call_forward. eapply agree_valid_linear; eauto.
+  eapply Mem.forward_valid_block; eauto using builtin_call_forward'; eauto.
   eapply agree_valid_mach; eauto.
 
 - (* Llabel *)

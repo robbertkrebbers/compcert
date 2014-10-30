@@ -320,7 +320,7 @@ Qed.
 
 (** Compatibility with memory injections *)
 
-Variable f: block -> option (block * Z).
+Variable f: meminj.
 
 Definition meminj_preserves_globals : Prop :=
      (forall id b, Genv.find_symbol ge id = Some b -> f b = Some(b, 0))
@@ -584,9 +584,6 @@ Definition extcall_sem : Type :=
 Definition loc_out_of_bounds (m: mem) (b: block) (ofs: Z) : Prop :=
   ~Mem.perm m b ofs Max Nonempty.
 
-Definition loc_not_writable (m: mem) (b: block) (ofs: Z) : Prop :=
-  ~Mem.perm m b ofs Max Writable.
-
 Definition loc_unmapped (f: meminj) (b: block) (ofs: Z): Prop :=
   f b = None.
 
@@ -616,26 +613,15 @@ Record extcall_properties (sem: extcall_sem)
     sem F1 V1 ge1 vargs m1 t vres m2 ->
     sem F2 V2 ge2 vargs m1 t vres m2;
 
-(** External calls cannot invalidate memory blocks.  (Remember that
-  freeing a block does not invalidate its block identifier.) *)
-  ec_valid_block:
-    forall F V (ge: Genv.t F V) vargs m1 t vres m2 b,
+(** External calls cannot:
+  + Invalidate memory blocks.
+    (Remember that freeing a block does not invalidate its block identifier.)
+  + Increase the max permissions of a valid block.
+    (They can decrease the max permissions, e.g. by freeing).
+  + Modify memory unless they have [Max, Writable] permissions. *)
+  ec_forward : forall F V (ge: Genv.t F V) vargs m1 t vres m2,
     sem F V ge vargs m1 t vres m2 ->
-    Mem.valid_block m1 b -> Mem.valid_block m2 b;
-
-(** External calls cannot increase the max permissions of a valid block.
-    They can decrease the max permissions, e.g. by freeing. *)
-  ec_max_perm:
-    forall F V (ge: Genv.t F V) vargs m1 t vres m2 b ofs p,
-    sem F V ge vargs m1 t vres m2 ->
-    Mem.valid_block m1 b -> Mem.perm m2 b ofs Max p -> Mem.perm m1 b ofs Max p;
-
-(** External call cannot modify memory unless they have [Max, Writable]
-   permissions. *)
-  ec_readonly:
-    forall F V (ge: Genv.t F V) vargs m1 t vres m2,
-    sem F V ge vargs m1 t vres m2 ->
-    Mem.unchanged_on (loc_not_writable m1) m1 m2;
+    Mem.forward m1 m2;
 
 (** External calls must commute with memory extensions, in the
   following sense. *)
@@ -771,12 +757,8 @@ Proof.
   eapply Mem.load_type; eauto. 
 (* symbols *)
   inv H1. constructor. eapply volatile_load_preserved; eauto. 
-(* valid blocks *)
-  inv H; auto.
-(* max perms *)
-  inv H; auto.
-(* readonly *)
-  inv H. apply Mem.unchanged_on_refl.
+(* forward *)
+  inv H; auto using Mem.forward_refl.
 (* mem extends *)
   inv H. inv H1. inv H6. inv H4. 
   exploit volatile_load_extends; eauto. intros [v' [A B]].
@@ -833,12 +815,8 @@ Proof.
   eapply Mem.load_type; eauto. 
 (* symbols *)
   inv H1. econstructor. rewrite H; eauto. eapply volatile_load_preserved; eauto. 
-(* valid blocks *)
-  inv H; auto.
-(* max perm *)
-  inv H; auto.
-(* readonly *)
-  inv H. apply Mem.unchanged_on_refl.
+(* forward *)
+  inv H; auto using Mem.forward_refl.
 (* extends *)
   inv H. inv H1. exploit volatile_load_extends; eauto. intros [v' [A B]].
   exists v'; exists m1'; intuition. econstructor; eauto.
@@ -881,19 +859,6 @@ Proof.
   rewrite H; auto.
   eapply eventval_match_preserved; eauto.
   rewrite H0; auto.
-Qed.
-
-Lemma volatile_store_readonly:
-  forall F V (ge: Genv.t F V) chunk1 m1 b1 ofs1 v t m2,
-  volatile_store ge chunk1 m1 b1 ofs1 v t m2 ->
-  Mem.unchanged_on (loc_not_writable m1) m1 m2.
-Proof.
-  intros. inv H.
-  apply Mem.unchanged_on_refl.
-  eapply Mem.store_unchanged_on; eauto. 
-  exploit Mem.store_valid_access_3; eauto. intros [P Q]. 
-  intros. unfold loc_not_writable. red; intros. elim H2. 
-  apply Mem.perm_cur_max. apply P. auto. 
 Qed.
 
 Lemma volatile_store_extends:
@@ -973,12 +938,8 @@ Proof.
   unfold proj_sig_res; simpl. inv H; constructor.
 (* symbols preserved *)
   inv H1. constructor. eapply volatile_store_preserved; eauto. 
-(* valid block *)
-  inv H. inv H1. auto. eauto with mem.
-(* perms *)
-  inv H. inv H2. auto. eauto with mem. 
-(* readonly *)
-  inv H. eapply volatile_store_readonly; eauto.
+(* forward *)
+  inv H; inv H0; eauto using Mem.store_forward, Mem.forward_refl.
 (* mem extends*)
   inv H. inv H1. inv H6. inv H7. inv H4.
   exploit volatile_store_extends; eauto. intros [m2' [A [B C]]]. 
@@ -1028,12 +989,8 @@ Proof.
   unfold proj_sig_res; simpl. inv H; constructor.
 (* symbols preserved *)
   inv H1. econstructor. rewrite H; eauto. eapply volatile_store_preserved; eauto. 
-(* valid block *)
-  inv H. inv H2. auto. eauto with mem.
-(* perms *)
-  inv H. inv H3. auto. eauto with mem. 
-(* readonly *)
-  inv H. eapply volatile_store_readonly; eauto.
+(* forward *)
+  inv H; inv H1; eauto using Mem.forward_refl, Mem.store_forward.
 (* mem extends*)
   rewrite volatile_store_global_charact in H. destruct H as [b [P Q]]. 
   exploit ec_mem_extends. eapply volatile_store_ok. eexact Q. eauto. eauto. 
@@ -1090,14 +1047,8 @@ Proof.
   inv H. unfold proj_sig_res; simpl. auto.
 (* symbols preserved *)
   inv H1; econstructor; eauto.
-(* valid block *)
-  inv H. eauto with mem.
-(* perms *)
-  inv H. exploit Mem.perm_alloc_inv. eauto. eapply Mem.perm_store_2; eauto.
-  rewrite dec_eq_false. auto. 
-  apply Mem.valid_not_valid_diff with m1; eauto with mem.
-(* readonly *)
-  inv H. eapply UNCHANGED; eauto. 
+(* forward *)
+  inv H. eauto using Mem.forward_trans, Mem.alloc_forward, Mem.store_forward.
 (* mem extends *)
   inv H. inv H1. inv H5. inv H7. 
   exploit Mem.alloc_extends; eauto. apply Zle_refl. apply Zle_refl.
@@ -1151,15 +1102,8 @@ Proof.
   inv H. unfold proj_sig_res. simpl. auto.
 (* symbols preserved *)
   inv H1; econstructor; eauto.
-(* valid block *)
-  inv H. eauto with mem.
-(* perms *)
-  inv H. eapply Mem.perm_free_3; eauto. 
-(* readonly *)
-  inv H. eapply Mem.free_unchanged_on; eauto. 
-  intros. red; intros. elim H3. 
-  apply Mem.perm_cur_max. apply Mem.perm_implies with Freeable; auto with mem. 
-  eapply Mem.free_range_perm; eauto. 
+(* forward *)
+  inv H. eauto using Mem.free_forward.
 (* mem extends *)
   inv H. inv H1. inv H8. inv H6. 
   exploit Mem.load_extends; eauto. intros [vsz [A B]]. inv B. 
@@ -1228,14 +1172,8 @@ Proof.
   intros. inv H. constructor. 
 - (* change of globalenv *)
   intros. inv H1. econstructor; eauto.
-- (* valid blocks *)
-  intros. inv H. eauto with mem. 
-- (* perms *)
-  intros. inv H. eapply Mem.perm_storebytes_2; eauto. 
-- (* readonly *)
-  intros. inv H. eapply Mem.storebytes_unchanged_on; eauto. 
-  intros; red; intros. elim H8. 
-  apply Mem.perm_cur_max. eapply Mem.storebytes_range_perm; eauto. 
+- (* forward *)
+  intros. inv H. eauto using Mem.storebytes_forward.
 - (* extensions *)
   intros. inv H. 
   inv H1. inv H13. inv H14. inv H10. inv H11.
@@ -1348,12 +1286,8 @@ Proof.
 (* symbols *)
   inv H1. econstructor; eauto. 
   eapply eventval_list_match_preserved; eauto.
-(* valid blocks *)
-  inv H; auto.
-(* perms *)
-  inv H; auto.
-(* readonly *)
-  inv H. apply Mem.unchanged_on_refl.
+(* forward *)
+  inv H; auto using Mem.forward_refl.
 (* mem extends *)
   inv H.
   exists Vundef; exists m1'; intuition.
@@ -1392,12 +1326,8 @@ Proof.
 (* symbols *)
   inv H1. econstructor; eauto. 
   eapply eventval_match_preserved; eauto.
-(* valid blocks *)
-  inv H; auto.
-(* perms *)
-  inv H; auto.
-(* readonly *)
-  inv H. apply Mem.unchanged_on_refl.
+(* forward *)
+  inv H; auto using Mem.forward_refl.
 (* mem extends *)
   inv H. inv H1. inv H6. 
   exists y; exists m1'; intuition.
@@ -1468,9 +1398,7 @@ Proof.
       | |- context [if ?x then _ else _] => destruct x
       end; auto.
   * auto.
-  * destruct 2; auto.
-  * destruct 2; auto.
-  * destruct 2; auto using Mem.unchanged_on_refl.
+  * destruct 2; auto using Mem.forward_refl.
   * destruct 2; intros;
       repeat match goal with
       | H : Forall2 Val.lessdef _ _ |- _ => inv H
@@ -1531,9 +1459,7 @@ Proof.
       | x : val |- _ => destruct x; try discriminate; simpl
       end; auto.
   * auto.
-  * destruct 2; auto.
-  * destruct 2; auto.
-  * destruct 2; auto using Mem.unchanged_on_refl.
+  * destruct 2; auto using Mem.forward_refl.
   * destruct 2; intros;
       repeat match goal with
       | H : Forall2 Val.lessdef _ _ |- _ => inv H
@@ -1650,9 +1576,7 @@ Qed.
 
 Definition external_call_well_typed ef := ec_well_typed (external_call_spec ef).
 Definition external_call_symbols_preserved_gen ef := ec_symbols_preserved (external_call_spec ef).
-Definition external_call_valid_block ef := ec_valid_block (external_call_spec ef).
-Definition external_call_max_perm ef := ec_max_perm (external_call_spec ef).
-Definition external_call_readonly ef := ec_readonly (external_call_spec ef).
+Definition external_call_forward ef := ec_forward (external_call_spec ef).
 Definition external_call_mem_extends ef := ec_mem_extends (external_call_spec ef).
 Definition external_call_mem_inject ef := ec_mem_inject (external_call_spec ef).
 Definition external_call_trace_length ef := ec_trace_length (external_call_spec ef).
@@ -1661,9 +1585,7 @@ Definition external_call_determ ef := ec_determ (external_call_spec ef).
 
 Definition builtin_call_well_typed ef := ec_well_typed (builtin_call_spec ef).
 Definition builtin_call_symbols_preserved_gen ef := ec_symbols_preserved (builtin_call_spec ef).
-Definition builtin_call_valid_block ef := ec_valid_block (builtin_call_spec ef).
-Definition builtin_call_max_perm ef := ec_max_perm (builtin_call_spec ef).
-Definition builtin_call_readonly ef := ec_readonly (builtin_call_spec ef).
+Definition builtin_call_forward ef := ec_forward (builtin_call_spec ef).
 Definition builtin_call_mem_extends ef := ec_mem_extends (builtin_call_spec ef).
 Definition builtin_call_mem_inject ef := ec_mem_inject (builtin_call_spec ef).
 Definition builtin_call_trace_length ef := ec_trace_length (builtin_call_spec ef).
@@ -1745,7 +1667,7 @@ Lemma ec_nextblock:
   Ple (Mem.nextblock m1) (Mem.nextblock m2).
 Proof.
   intros. destruct (plt (Mem.nextblock m2) (Mem.nextblock m1)).
-  exploit ec_valid_block; eauto. intros.
+  exploit Mem.forward_valid_block; eauto using ec_forward; intros.
   eelim Plt_strict; eauto.
   unfold Plt, Ple in *; zify; omega.
 Qed.
@@ -1789,22 +1711,6 @@ Lemma builtin_call_deterministic:
   vres1 = vres2 /\ m1 = m2.
 Proof.
   intros. exploit builtin_call_determ. eexact H. eexact H0. intuition.
-Qed.
-
-(** Corollaries of [external_call_valid_block] and [external_call_max_perm]. *)
-
-Lemma external_call_forward:
-  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
-  external_call ef ge vargs m1 t vres m2 -> Mem.forward m1 m2.
-Proof.
-  split; eauto using external_call_valid_block, external_call_max_perm.
-Qed.
-
-Lemma builtin_call_forward:
-  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
-  builtin_call ef ge vargs m1 t vres m2 -> Mem.forward m1 m2.
-Proof.
-  split; eauto using builtin_call_valid_block, builtin_call_max_perm.
 Qed.
 
 (** Late in the back-end, calling conventions for external calls change:
@@ -1906,12 +1812,11 @@ Proof.
   intros. inv H. exists v; auto. eapply external_call_symbols_preserved; eauto.
 Qed.
 
-Lemma external_call_valid_block':
-  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2 b,
-  external_call' ef ge vargs m1 t vres m2 ->
-  Mem.valid_block m1 b -> Mem.valid_block m2 b.
+Lemma external_call_forward':
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
+  external_call' ef ge vargs m1 t vres m2 -> Mem.forward m1 m2.
 Proof.
-  intros. inv H. eapply external_call_valid_block; eauto.
+  intros. inv H. eapply external_call_forward; eauto.
 Qed.
 
 Lemma external_call_nextblock':
@@ -1996,22 +1901,6 @@ Proof.
   split; congruence.
 Qed.
 
-Lemma external_call_max_perm':
-  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2 b ofs p,
-  external_call' ef ge vargs m1 t vres m2 ->
-  Mem.valid_block m1 b ->
-  Mem.perm m2 b ofs Max p -> Mem.perm m1 b ofs Max p.
-Proof.
-  destruct 1; eauto using external_call_max_perm.
-Qed.
-
-Lemma external_call_forward':
-  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
-  external_call' ef ge vargs m1 t vres m2 -> Mem.forward m1 m2.
-Proof.
-  split; eauto using external_call_valid_block', external_call_max_perm'.
-Qed.
-
 Inductive builtin_call'
       (ef: builtin) (F V: Type) (ge: Genv.t F V)
       (vargs: list val) (m1: mem) (t: trace) (vres: list val) (m2: mem) : Prop :=
@@ -2039,12 +1928,11 @@ Proof.
   intros. inv H. exists v; auto. eapply builtin_call_symbols_preserved; eauto.
 Qed.
 
-Lemma builtin_call_valid_block':
-  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2 b,
-  builtin_call' ef ge vargs m1 t vres m2 ->
-  Mem.valid_block m1 b -> Mem.valid_block m2 b.
+Lemma builtin_call_forward':
+  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
+  builtin_call' ef ge vargs m1 t vres m2 -> Mem.forward m1 m2.
 Proof.
-  intros. inv H. eapply builtin_call_valid_block; eauto.
+  intros. inv H. eapply builtin_call_forward; eauto.
 Qed.
 
 Lemma builtin_call_nextblock':
@@ -2127,20 +2015,4 @@ Proof.
   intros. inv H; inv H0. 
   exploit builtin_call_deterministic. eexact H1. eexact H. intros [A B].
   split; congruence.
-Qed.
-
-Lemma builtin_call_max_perm':
-  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2 b ofs p,
-  builtin_call' ef ge vargs m1 t vres m2 ->
-  Mem.valid_block m1 b ->
-  Mem.perm m2 b ofs Max p -> Mem.perm m1 b ofs Max p.
-Proof.
-  destruct 1; eauto using builtin_call_max_perm.
-Qed.
-
-Lemma builtin_call_forward':
-  forall ef (F V : Type) (ge : Genv.t F V) vargs m1 t vres m2,
-  builtin_call' ef ge vargs m1 t vres m2 -> Mem.forward m1 m2.
-Proof.
-  split; eauto using builtin_call_valid_block', builtin_call_max_perm'.
 Qed.

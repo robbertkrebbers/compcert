@@ -944,10 +944,10 @@ Proof.
   exploit RO; eauto. intros (R & P & Q).
   split; auto.
   split. apply bmatch_incr with bc; auto. apply bmatch_inv with m; auto.
-  intros. eapply Mem.loadbytes_unchanged_on_1. eapply ec_readonly; eauto. 
+  intros. eapply Mem.loadbytes_unchanged_on_1. eapply Mem.forward_readonly, ec_forward; eauto. 
   auto. intros; red. apply Q. 
   intros; red; intros; elim (Q ofs). 
-  eapply ec_max_perm with (m2 := m'); eauto.
+  eapply Mem.forward_max_perm with (m2 := m'); eauto using ec_forward.
   destruct (j' b); congruence.
 - (* mmatch top *)
   constructor; simpl; intros.

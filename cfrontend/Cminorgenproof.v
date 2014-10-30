@@ -2032,7 +2032,7 @@ Proof.
                  (Mem.nextblock m') (Mem.nextblock tm')).
     apply match_callstack_incr_bound with (Mem.nextblock m) (Mem.nextblock tm).
     eapply match_callstack_external_call; eauto.
-    intros. eapply builtin_call_max_perm; eauto.
+    intros. eapply Mem.forward_max_perm; eauto using builtin_call_forward.
     xomega. xomega. 
     eapply builtin_call_nextblock; eauto.
     eapply builtin_call_nextblock; eauto.
@@ -2185,7 +2185,7 @@ Opaque PTree.set.
   econstructor; eauto.
   apply match_callstack_incr_bound with (Mem.nextblock m) (Mem.nextblock tm).
   eapply match_callstack_external_call; eauto.
-  intros. eapply external_call_max_perm; eauto.
+  intros. eapply Mem.forward_max_perm; eauto using external_call_forward.
   xomega. xomega.
   eapply external_call_nextblock; eauto.
   eapply external_call_nextblock; eauto.

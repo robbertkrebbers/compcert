@@ -4299,24 +4299,45 @@ Qed.
 
 End UNCHANGED_ON.
 
-(** During the execution of the semantics, the memories should only grow, i.e.
-new objects may be allocated and permissions may be dropped. *)
+(** During the execution of the semantics, the semantics cannot:
 
-Definition forward (m1 m2:mem) :=
-  (forall b, valid_block m1 b ->
-    valid_block m2 b /\ 
-    forall ofs p, perm m2 b ofs Max p -> perm m1 b ofs Max p).
+- Invalidate memory blocks.
+  (Remember that freeing a block does not invalidate its block identifier.)
+- Increase the max permissions of a valid block.
+  (They can decrease the max permissions, e.g. by freeing).
+- Modify memory unless they have [Max, Writable] permissions.
+
+We prove that the step relation of each semantics is "forward", which captures
+precisely these properties. *)
+
+Definition loc_not_writable (m: mem) (b: block) (ofs: Z) : Prop :=
+  ~Mem.perm m b ofs Max Writable.
+
+Record forward (m1 m2:mem) := {
+  forward_valid_block:
+    forall b, valid_block m1 b -> valid_block m2 b;
+  forward_max_perm:
+    forall b ofs p,
+    valid_block m1 b -> perm m2 b ofs Max p -> perm m1 b ofs Max p;
+  forward_readonly:
+    unchanged_on (loc_not_writable m1) m1 m2
+}.
 
 Lemma forward_refl:
   forall m, forward m m.
-Proof. red; eauto. Qed. 
+Proof. split; auto using unchanged_on_refl. Qed.
 
 Lemma forward_trans:
   forall m1 m2 m3, 
   forward m1 m2 -> forward m2 m3 -> forward m1 m3.
 Proof.
-  intros m1 m2 m3 Hm12 Hm23 b Hb1.
-  destruct (Hm12 _ Hb1) as [Hb2 ?]; destruct (Hm23 _ Hb2); eauto.
+  intros m1 m2 m3 [V1 P1 RO1] [V2 P2 RO2]; split; auto. split.
+  * intros. erewrite unchanged_on_perm by eauto.
+    eapply unchanged_on_perm; eauto. unfold loc_not_writable in *; eauto.
+  * intros. etransitivity; [|eapply unchanged_on_contents; eauto].
+    eapply unchanged_on_contents; eauto.
+    unfold loc_not_writable in *; eauto using perm_valid_block.
+    now erewrite <-unchanged_on_perm by eauto using perm_valid_block.
 Qed.
 
 Lemma unchanged_trans:
@@ -4339,6 +4360,8 @@ Lemma store_forward:
   store ch m b ofs v = Some m' -> forward m m'.
 Proof.
   split; eauto using store_valid_block_1, perm_store_2.
+  eapply store_unchanged_on; eauto.
+  intros i ? []. eapply perm_cur_max, store_valid_access_3; eauto.
 Qed.
 
 Lemma storev_forward:
@@ -4353,6 +4376,8 @@ Lemma storebytes_forward:
   storebytes m b ofs bytes = Some m' -> forward m m'.
 Proof.
   split; eauto using storebytes_valid_block_1, perm_storebytes_2.
+  eapply storebytes_unchanged_on; eauto.
+  intros i ? []. eapply perm_cur_max, storebytes_range_perm; eauto.
 Qed.
 
 Lemma alloc_forward:
@@ -4360,16 +4385,20 @@ Lemma alloc_forward:
   alloc m lo hi = (m',b) -> forward m m'.
 Proof.
   split; intros.
-  { eauto using valid_block_alloc. }
-  eapply perm_alloc_4; eauto.
-  intros ->; eapply fresh_block_alloc; eauto.
+  * eauto using valid_block_alloc.
+  * eapply perm_alloc_4; eauto.
+    intros ->; eapply fresh_block_alloc; eauto.
+  * eauto using alloc_unchanged_on.
 Qed.
 
 Lemma free_forward:
   forall b z0 z m m',
   free m b z0 z = Some m' -> forward m m'.
 Proof.
-  split; eauto using valid_block_free_1, perm_free_3. 
+  split; eauto using valid_block_free_1, perm_free_3.
+  eapply free_unchanged_on; eauto.
+  intros i ? []. eapply perm_cur_max, perm_implies with Freeable.
+  eapply free_range_perm; eauto. constructor.
 Qed.
 
 Lemma free_list_forward:

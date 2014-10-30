@@ -1012,17 +1012,17 @@ Proof.
   econstructor.
     eapply match_stacks_inside_set_reg. 
     eapply match_stacks_inside_extcall with (F1 := F) (F2 := F1) (m1 := m) (m1' := m'0); eauto.
-    intros; eapply builtin_call_max_perm; eauto. 
-    intros; eapply builtin_call_max_perm; eauto. 
+    intros; eapply Mem.forward_max_perm; eauto using builtin_call_forward. 
+    intros; eapply Mem.forward_max_perm; eauto using builtin_call_forward. 
   auto. 
   eapply agree_set_reg. eapply agree_regs_incr; eauto. auto. auto. 
   apply J; auto.
   auto. 
-  eapply builtin_call_valid_block; eauto. 
+  eapply Mem.forward_valid_block; eauto using builtin_call_forward.
   eapply range_private_extcall; eauto. 
-    intros; eapply builtin_call_max_perm; eauto. 
+    intros; eapply Mem.forward_max_perm; eauto using builtin_call_forward.
   auto. 
-  intros. apply SSZ2. eapply builtin_call_max_perm; eauto. 
+  intros. apply SSZ2. eapply Mem.forward_max_perm; eauto using builtin_call_forward.
 
 (* cond *)
   exploit tr_funbody_inv; eauto. intros TR; inv TR.
@@ -1165,8 +1165,8 @@ Proof.
   econstructor.
     eapply match_stacks_bound with (Mem.nextblock m'0).
     eapply match_stacks_extcall with (F1 := F) (F2 := F1) (m1 := m) (m1' := m'0); eauto.
-    intros; eapply external_call_max_perm; eauto. 
-    intros; eapply external_call_max_perm; eauto.
+    intros; eapply Mem.forward_max_perm; eauto using external_call_forward.
+    intros; eapply Mem.forward_max_perm; eauto using external_call_forward.
     xomega.
     eapply external_call_nextblock; eauto. 
     auto. auto.
