@@ -910,7 +910,7 @@ Remark symbol_address_inject:
   forall id ofs, val_inject f (Genv.symbol_address genv id ofs) (Genv.symbol_address genv id ofs).
 Proof.
   intros. unfold Genv.symbol_address. destruct (Genv.find_symbol genv id) eqn:?; auto.
-  exploit (proj1 globals); eauto. intros. 
+  exploit meminj_preserves_symbol; eauto. intros. 
   econstructor; eauto. rewrite Int.add_zero; auto.
 Qed.
 

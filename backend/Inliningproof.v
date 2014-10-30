@@ -469,8 +469,7 @@ Qed.
 Lemma match_globalenvs_preserves_globals:
   forall b, match_globalenvs F b -> meminj_preserves_globals ge F.
 Proof.
-  intros. inv H. red. split. eauto. split. eauto.
-  intros. symmetry. eapply IMAGE; eauto.
+  intros. inv H. split; eauto. intros. symmetry. eapply IMAGE; eauto.
 Qed. 
 
 Lemma match_stacks_inside_globals:

@@ -3746,10 +3746,11 @@ Qed.
 Lemma inj_of_bc_preserves_globals:
   forall bc ge, genv_match bc ge -> meminj_preserves_globals ge (inj_of_bc bc).
 Proof.
-  intros. destruct H as [A B].
-  split. intros. apply inj_of_bc_valid. rewrite A in H. congruence.
-  split. intros. apply inj_of_bc_valid. apply B. eapply Genv.genv_vars_range; eauto. 
-  intros. exploit inj_of_bc_inv; eauto. intros (P & Q & R). auto. 
+  intros. destruct H as [A B]. split.
+  * intros. apply inj_of_bc_valid. rewrite A in H. congruence.
+  * intros. apply inj_of_bc_valid. apply B. eapply Genv.genv_vars_range; eauto. 
+  * intros. apply inj_of_bc_valid. apply B. eapply Genv.genv_funs_range; eauto. 
+  * intros. exploit inj_of_bc_inv; eauto. intros (P & Q & R). auto. 
 Qed.
 
 Lemma pmatch_inj_top:

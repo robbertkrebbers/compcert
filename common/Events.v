@@ -322,10 +322,16 @@ Qed.
 
 Variable f: meminj.
 
-Definition meminj_preserves_globals : Prop :=
-     (forall id b, Genv.find_symbol ge id = Some b -> f b = Some(b, 0))
-  /\ (forall b gv, Genv.find_var_info ge b = Some gv -> f b = Some(b, 0))
-  /\ (forall b1 b2 delta gv, Genv.find_var_info ge b2 = Some gv -> f b1 = Some(b2, delta) -> b2 = b1).
+Record meminj_preserves_globals : Prop := {
+  meminj_preserves_symbol :
+    forall id b, Genv.find_symbol ge id = Some b -> f b = Some(b, 0);
+  meminj_preserves_var_info:
+    forall b gv, Genv.find_var_info ge b = Some gv -> f b = Some(b, 0);
+  meminj_preserves_funct_ptr:
+    forall b fd, Genv.find_funct_ptr ge b = Some fd -> f b = Some(b,0);
+  meminj_preserves_var_info_inj:
+    forall b1 b2 delta gv, Genv.find_var_info ge b2 = Some gv -> f b1 = Some(b2, delta) -> b2 = b1
+}.
 
 Hypothesis glob_pres: meminj_preserves_globals.
 
@@ -334,8 +340,7 @@ Lemma eventval_match_inject:
   eventval_match ev ty v1 -> val_inject f v1 v2 -> eventval_match ev ty v2.
 Proof.
   intros. inv H; inv H0; try constructor; auto.
-  destruct glob_pres as [A [B C]].
-  exploit A; eauto. intro EQ; rewrite H3 in EQ; inv EQ.
+  exploit meminj_preserves_symbol; eauto. intro EQ; rewrite H3 in EQ; inv EQ.
   rewrite Int.add_zero. econstructor; eauto. 
 Qed.
 
@@ -344,8 +349,7 @@ Lemma eventval_match_inject_2:
   eventval_match ev ty v -> val_inject f v v.
 Proof.
   induction 1; auto.
-  destruct glob_pres as [A [B C]].
-  exploit A; eauto. intro EQ.
+  exploit meminj_preserves_symbol; eauto. intro EQ.
   econstructor; eauto. rewrite Int.add_zero; auto.
 Qed.
 
@@ -710,11 +714,11 @@ Remark meminj_preserves_block_is_volatile:
   f b1 = Some (b2, delta) ->
   block_is_volatile ge b2 = block_is_volatile ge b1.
 Proof.
-  intros. destruct H as [A [B C]]. unfold block_is_volatile. 
+  intros. unfold block_is_volatile. 
   case_eq (Genv.find_var_info ge b1); intros.
-  exploit B; eauto. intro EQ; rewrite H0 in EQ; inv EQ. rewrite H; auto.
+  exploit meminj_preserves_var_info; eauto. intro EQ; rewrite H0 in EQ; inv EQ. rewrite H1; auto.
   case_eq (Genv.find_var_info ge b2); intros.
-  exploit C; eauto. intro EQ. congruence.
+  exploit meminj_preserves_var_info_inj; eauto. intro EQ. congruence.
   auto.
 Qed.
 
@@ -727,7 +731,7 @@ Lemma volatile_load_inject:
   exists v', volatile_load ge chunk m' b' ofs' t v' /\ val_inject f v v'.
 Proof.
   intros. inv H0.
-  inv H1. exploit (proj1 H); eauto. intros EQ; rewrite H8 in EQ; inv EQ.
+  inv H1. exploit meminj_preserves_symbol; eauto. intros EQ; rewrite H8 in EQ; inv EQ.
   rewrite Int.add_zero. exists (Val.load_result chunk v0); split.
   constructor; auto. 
   apply val_load_result_inject. eapply eventval_match_inject_2; eauto.
@@ -823,7 +827,7 @@ Proof.
 (* inject *)
   inv H0. inv H2.
   assert (val_inject f (Vptr b ofs) (Vptr b ofs)). 
-    exploit (proj1 H); eauto. intros EQ. econstructor. eauto. rewrite Int.add_zero; auto.
+    exploit meminj_preserves_symbol; eauto. intros EQ. econstructor. eauto. rewrite Int.add_zero; auto.
   exploit volatile_load_inject; eauto. intros [v' [A B]].
   exists f; exists v'; exists m1'; intuition. econstructor; eauto. 
   red; intros; congruence. 
@@ -900,7 +904,7 @@ Lemma volatile_store_inject:
     /\ Mem.unchanged_on (loc_out_of_reach f m1) m1' m2'.
 Proof.
   intros. inv H0.
-- inv H1. exploit (proj1 H); eauto. intros EQ; rewrite H9 in EQ; inv EQ.
+- inv H1. exploit meminj_preserves_symbol; eauto. intros EQ; rewrite H9 in EQ; inv EQ.
   rewrite Int.add_zero. exists m1'. intuition. 
   constructor; auto.
   eapply eventval_match_inject; eauto. apply val_load_result_inject; auto.
@@ -998,7 +1002,7 @@ Proof.
   exists vres'; exists m2'; intuition. rewrite volatile_store_global_charact. exists b; auto. 
 (* mem inject *)
   rewrite volatile_store_global_charact in H0. destruct H0 as [b [P Q]]. 
-  exploit (proj1 H). eauto. intros EQ. 
+  exploit meminj_preserves_symbol; eauto. intros EQ. 
   assert (val_inject f (Vptr b ofs) (Vptr b ofs)). econstructor; eauto. rewrite Int.add_zero; auto.
   exploit ec_mem_inject. eapply volatile_store_ok. eauto. eexact Q. eauto. eauto. 
   intros [f' [vres' [m2' [A [B [C [D [E G]]]]]]]].

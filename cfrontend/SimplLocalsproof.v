@@ -1351,7 +1351,7 @@ Lemma match_globalenvs_preserves_globals:
   meminj_preserves_globals ge f.
 Proof.
   intros. destruct H as [bound MG]. inv MG.
-  split; intros. eauto. split; intros. eauto. symmetry. eapply IMAGE; eauto.
+  split; eauto. intros; symmetry; eapply IMAGE; eauto.
 Qed. 
 
 (** Evaluation of expressions *)

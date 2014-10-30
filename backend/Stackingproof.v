@@ -2052,7 +2052,7 @@ Lemma match_stacks_preserves_globals:
   meminj_preserves_globals ge j.
 Proof.
   intros. exploit match_stacks_globalenvs; eauto. intros [hi MG]. inv MG.
-  split. eauto. split. eauto. intros. symmetry. eauto. 
+  split; eauto. intros. symmetry. eauto. 
 Qed.
 
 (** Typing properties of [match_stacks]. *)

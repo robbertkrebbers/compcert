@@ -438,9 +438,7 @@ Remark inj_preserves_globals:
   meminj_preserves_globals ge f.
 Proof.
   intros. inv H.
-  split. intros. apply DOMAIN. eapply SYMBOLS. eauto.
-  split. intros. apply DOMAIN. eapply VARINFOS. eauto. 
-  intros. symmetry. eapply IMAGE; eauto. 
+  split; eauto. intros; symmetry; eapply IMAGE; eauto. 
 Qed.
 
 (** * Invariant on abstract call stacks  *)
